@@ -1,0 +1,637 @@
+// SQLite for zero-setup local development. Switch provider to "postgresql"
+// and DATABASE_URL to a hosted DB when deploying (see PROJECT_STATUS.md).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  passwordHash String
+  /// TEACHER | STUDENT
+  role         String
+  school       String?
+  /// Student sign-up: guardian consent declared by the student (self-declared, not verified)
+  guardianName String?
+  consentAt    DateTime?
+  createdAt    DateTime      @default(now())
+  sessions     Session[]
+  teaching     Classroom[]
+  memberships  Membership[]
+  chapterSeen  ChapterSeen[]
+  attempts     QuizAttempt[]
+  mcqSessions  McqSession[]
+  mcqAnswers   McqAnswer[]
+  game         GameProfile?
+  gameAwards   GameAward[]
+  raidsStarted Raid[]
+  planDone     PlanDone[]
+  homeworkSheets HomeworkSheet[]
+  homeworkWork HomeworkWork[]
+  notes        Note[]        @relation("NoteAuthor")
+  reviewed     Note[]        @relation("NoteReviewer")
+  comments     Comment[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Classroom {
+  id                   String        @id @default(cuid())
+  name                 String
+  grade                String?
+  /// Short code students type to join (unique, unambiguous characters)
+  joinCode             String        @unique
+  /// When false, the code no longer admits new students
+  joinOpen             Boolean       @default(true)
+  /// How many multiple-choice questions a student gets when they ask for new ones (0 = students can't generate)
+  studentQuestionCount Int           @default(5)
+  /// The AI tutor (Ask a doubt, photo questions, Teach Knowa) for consent-confirmed students. The teacher can switch it off.
+  aiTutor              Boolean              @default(true)
+  teacherId            String
+  createdAt            DateTime      @default(now())
+  teacher              User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  homework             HomeworkSheet[]
+  members              Membership[]
+  subjects             Subject[]
+  notes                Note[]
+  assessments          Assessment[]
+  examPatterns         ExamPattern[]
+
+  @@index([teacherId])
+}
+
+model Membership {
+  id                String    @id @default(cuid())
+  classroomId       String
+  userId            String
+  joinedAt          DateTime  @default(now())
+  /// STUDENT | TEACHER (co-teacher; the class creator is Classroom.teacherId)
+  role              String    @default("STUDENT")
+  /// ACTIVE | PENDING (teacher join requests wait for approval by a class teacher)
+  status            String    @default("ACTIVE")
+  /// Set when the teacher confirms they hold a signed guardian consent form
+  consentVerifiedAt DateTime?
+  /// Teacher-approved to upload notes (any subject). Requires confirmed consent.
+  canUpload         Boolean   @default(false)
+  classroom         Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, userId])
+  @@index([userId])
+}
+
+model Subject {
+  id             String          @id @default(cuid())
+  classroomId    String
+  name           String
+  color          String          @default("teal")
+  /// Where the chapter list came from, e.g. "NCERT Curiosity (hecu1), Reprint 2026-27"
+  indexSource    String?
+  position       Int             @default(0)
+  createdAt      DateTime        @default(now())
+  classroom      Classroom       @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  chapters       Chapter[]
+  notes          Note[]
+  assessments    Assessment[]
+  misconceptions Misconception[]
+
+  @@index([classroomId])
+}
+
+model Chapter {
+  id           String               @id @default(cuid())
+  subjectId    String
+  name         String
+  position     Int                  @default(0)
+  subject      Subject              @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  notes        Note[]
+  seenBy       ChapterSeen[]
+  flashcards   Flashcard[]
+  questions    Question[]
+  attempts     QuizAttempt[]
+  assessments  AssessmentChapter[]
+  mcqs         McqQuestion[]
+  homework     HomeworkSheet[]
+  raids        Raid[]
+  mcqSessions  McqSession[]
+  examPatterns ExamPatternChapter[]
+
+  @@index([subjectId])
+}
+
+/// A notebook submission: one or more page photos and/or typed text, filed under a subject/chapter.
+model Note {
+  id           String           @id @default(cuid())
+  classroomId  String
+  subjectId    String
+  chapterId    String?
+  authorId     String
+  title        String
+  /// The date the notes are from (the lesson date), chosen by the uploader
+  lessonDate   DateTime?
+  /// Typed notes or a short description of the photos
+  text         String?
+  /// PENDING | APPROVED | REJECTED
+  status       String           @default("PENDING")
+  rejectReason String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  classroom    Classroom        @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  subject      Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  chapter      Chapter?         @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  author       User             @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  reviewedBy   User?            @relation("NoteReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  images       NoteImage[]
+  comments     Comment[]
+  flashcards   Flashcard[]
+  questions    Question[]
+  mcqs         McqQuestion[]
+  explanation  NoteExplanation?
+  model3d      NoteModel3D?
+  attachments  NoteAttachment[]
+
+  @@index([classroomId, status])
+  @@index([authorId])
+}
+
+/// A page photo, re-encoded on upload (all EXIF/GPS metadata removed).
+model NoteImage {
+  id               String    @id @default(cuid())
+  noteId           String
+  position         Int       @default(0)
+  filePath         String
+  width            Int
+  height           Int
+  size             Int
+  /// Whether this page should be converted to text (off for drawings/diagram-only pages)
+  convert          Boolean   @default(true)
+  /// Text read from the page (by AI after teacher approval, or typed/corrected by the teacher)
+  transcript       String?
+  /// NONE | QUEUED | PROCESSING | DONE | FAILED
+  transcriptStatus String    @default("NONE")
+  /// AI | TEACHER
+  transcriptSource String?
+  transcriptError  String?
+  transcribedAt    DateTime?
+  note             Note      @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  noteId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+}
+
+/// One AI call (for the daily cap and cost visibility). Holds no content, only counts.
+model AiUsage {
+  id           String   @id @default(cuid())
+  classroomId  String
+  imageId      String?
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  /// PAGE (handwriting reading) | STUDY (flashcards and quiz questions)
+  kind         String   @default("PAGE")
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([classroomId])
+}
+
+/// When a user last opened a chapter's combined notes, so newer notes can be marked "New".
+model ChapterSeen {
+  userId    String
+  chapterId String
+  seenAt    DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@id([userId, chapterId])
+}
+
+/// A dated test, assignment or exam set by a teacher, covering some chapters of one subject.
+model Assessment {
+  id          String              @id @default(cuid())
+  classroomId String
+  subjectId   String
+  /// TEST | ASSIGNMENT | EXAM
+  kind        String
+  title       String
+  /// Calendar date, stored as UTC midnight
+  date        DateTime
+  createdAt   DateTime            @default(now())
+  classroom   Classroom           @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  subject     Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  chapters    AssessmentChapter[]
+  /// The exam pattern this test or exam follows (optional)
+  patternId   String?
+  pattern     ExamPattern?        @relation(fields: [patternId], references: [id], onDelete: SetNull)
+
+  @@index([classroomId, date])
+}
+
+model AssessmentChapter {
+  assessmentId String
+  chapterId    String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  chapter      Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@id([assessmentId, chapterId])
+  @@index([chapterId])
+}
+
+/// A study card made from an approved note. AI cards start as DRAFT; students only see APPROVED ones.
+model Flashcard {
+  id        String   @id @default(cuid())
+  chapterId String
+  noteId    String?
+  front     String
+  back      String
+  /// DRAFT | APPROVED
+  status    String   @default("DRAFT")
+  /// AI | TEACHER
+  source    String   @default("AI")
+  createdAt DateTime @default(now())
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  note      Note?    @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([chapterId, status])
+  @@index([noteId])
+}
+
+/// A written-answer question made from an approved note (the note is the "section" it covers).
+/// Students answer in their own words; the model answer and key points are what an answer is judged against.
+model Question {
+  id        String   @id @default(cuid())
+  chapterId String
+  noteId    String?
+  question  String
+  /// The model answer, in a few short sentences
+  answer    String
+  /// JSON array of 1-4 short ideas a correct answer should contain
+  keyPoints String
+  /// DRAFT | APPROVED
+  status    String   @default("DRAFT")
+  /// AI | TEACHER
+  source    String   @default("AI")
+  createdAt DateTime @default(now())
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  note      Note?    @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([chapterId, status])
+  @@index([noteId])
+}
+
+/// One student's quiz on a chapter. The server keeps the question set, so grading never trusts the browser.
+/// Visible only to the student who took it.
+model QuizAttempt {
+  id          String    @id @default(cuid())
+  userId      String
+  chapterId   String
+  /// JSON array of the note ids the student said they had studied
+  noteIds     String
+  /// JSON array of question ids, in the order shown
+  items       String
+  /// JSON array of the student's written answers, set when submitted
+  answers     String?
+  /// JSON array of { verdict: CORRECT | PARTLY | INCORRECT | SKIPPED, feedback }, set when submitted
+  grades      String?
+  /// JSON array, one per question in `items` order: how sure the student was (SURE | UNSURE | GUESS, or null
+  /// if not given). Set when submitted. Visible only to the student; teachers see counts only. Never sent to the AI.
+  confidence  String?
+  /// Points: 1 for correct, 0.5 for partly correct
+  score       Float?
+  total       Int
+  createdAt   DateTime  @default(now())
+  submittedAt DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter     Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@index([userId, chapterId])
+}
+
+/// A common wrong idea in a subject, e.g. "Confuses distance with displacement". Wrong MCQ options are tagged with one.
+/// One person's game progress (all classes): XP, coins, the daily streak and cosmetics. Their own data only.
+model GameProfile {
+  userId     String   @id
+  xp         Int      @default(0)
+  coins      Int      @default(60)
+  streak     Int      @default(0)
+  best       Int      @default(0)
+  /// The last day (YYYY-MM-DD, the user's time zone) that counted towards the streak
+  lastDay    String?
+  /// Streak Freezes held (0–2); each covers one missed day
+  freezes    Int      @default(0)
+  /// JSON: { "YYYY-MM-DD": "on" | "ice" } for the last ~10 weeks
+  days       String   @default("{}")
+  /// JSON array of owned item keys ("armor:red")
+  owned      String   @default("[]")
+  /// JSON: { armor, hat, sword, cape, aura }
+  equipped   String   @default("{}")
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A reward that may be given only once (e.g. "lesson:atom:2026-11-18"), so XP and coins can't be farmed.
+model GameAward {
+  userId    String
+  key       String
+  xp        Int      @default(0)
+  coins     Int      @default(0)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+}
+
+/// A team raid: classmates fight one big boss for a chapter; each player's boss session adds damage.
+model Raid {
+  id          String       @id @default(cuid())
+  classroomId String
+  chapterId   String
+  hp          Int
+  createdById String
+  createdAt   DateTime     @default(now())
+  endsAt      DateTime
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  chapter     Chapter      @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  sessions    McqSession[]
+
+  @@index([classroomId])
+}
+
+/// A ticked task in a student's study plan for an upcoming test or exam ("<assessmentId>:c<chapterId>" or ":r0").
+model PlanDone {
+  userId    String
+  key       String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+}
+
+/// A homework sheet a teacher made (with AI, from a chapter and its approved notes) and can publish to the class.
+model HomeworkSheet {
+  id          String         @id @default(cuid())
+  classroomId String
+  chapterId   String?
+  title       String
+  /// Instructions for students
+  note        String         @default("")
+  /// JSON array of { q, marks, answer } (the answers are the teacher's key; students never receive them)
+  questions   String
+  createdById String
+  createdAt   DateTime       @default(now())
+  /// When students could first see it (null = draft)
+  publishedAt DateTime?
+  classroom   Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  chapter     Chapter?       @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  work        HomeworkWork[]
+
+  @@index([classroomId])
+}
+
+/// A student's homework: their typed answers (if they answered in the app) and the marks. Marks are
+/// suggested by AI (from typed answers or a photo of the paper) and shown to the student only once the
+/// teacher confirms them.
+model HomeworkWork {
+  sheetId     String
+  userId      String
+  /// JSON array of strings, one per question (null if marked from paper)
+  answers     String?
+  submittedAt DateTime?
+  /// JSON: { answers: [{ awarded, of, comment }], feedback, weak: string[] }
+  marks       String?
+  total       Float?
+  outOf       Int?
+  /// SUGGESTED (AI, waiting for the teacher) | CONFIRMED (visible to the student)
+  markStatus  String?
+  markedAt    DateTime?
+  sheet       HomeworkSheet  @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sheetId, userId])
+}
+
+model Misconception {
+  id          String          @id @default(cuid())
+  subjectId   String
+  /// Short name of the trap, shown to students and teachers
+  label       String
+  /// The correct idea, in one or two sentences (shown when a student falls for it)
+  fix         String
+  createdAt   DateTime        @default(now())
+  subject     Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  distractors McqDistractor[]
+  answers     McqAnswer[]
+  sessions    McqSession[]
+
+  @@index([subjectId])
+}
+
+/// A multiple-choice question for Mistake Map practice. Each wrong option may be tagged with a misconception.
+model McqQuestion {
+  id             String          @id @default(cuid())
+  chapterId      String
+  noteId         String?
+  stem           String
+  /// JSON array of exactly 4 strings
+  choices        String
+  answerIndex    Int
+  /// Why the right answer is right
+  explanation    String          @default("")
+  /// DRAFT | APPROVED
+  status         String          @default("DRAFT")
+  /// AI | TEACHER
+  source         String          @default("AI")
+  /// Who approved it: TEACHER or STUDENT (students may approve Mistake Map drafts; teachers see which)
+  approvedByRole String?
+  approvedById   String?
+  /// Who asked for it to be made (a teacher, or a student generating practice questions: source STUDENT)
+  createdById    String?
+  createdAt      DateTime        @default(now())
+  chapter        Chapter         @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  note           Note?           @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  distractors    McqDistractor[]
+  answers        McqAnswer[]
+
+  @@index([chapterId, status])
+  @@index([noteId])
+}
+
+/// "Wrong option N of this question is the trap for misconception M."
+model McqDistractor {
+  questionId      String
+  choiceIndex     Int
+  misconceptionId String
+  question        McqQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  misconception   Misconception @relation(fields: [misconceptionId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, choiceIndex])
+  @@index([misconceptionId])
+}
+
+/// One practice set: a chapter's questions, or questions aimed at one misconception. The server keeps the
+/// order and each question's choice order, so grading never trusts the browser.
+model McqSession {
+  id              String         @id @default(cuid())
+  userId          String
+  chapterId       String?
+  misconceptionId String?
+  /// JSON array of { id: questionId, perm: number[] } where perm[i] is the original choice shown at position i
+  items           String
+  /// practice | boss (a Boss Battle: same questions, graded the same way; answers also feed the Mistake Map)
+  kind            String         @default("practice")
+  /// A boss session that is part of a team raid
+  raidId          String?
+  createdAt       DateTime       @default(now())
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter         Chapter?       @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  misconception   Misconception? @relation(fields: [misconceptionId], references: [id], onDelete: SetNull)
+  raid            Raid?          @relation(fields: [raidId], references: [id], onDelete: SetNull)
+  answers         McqAnswer[]
+
+  @@index([userId])
+}
+
+/// One answer. `misconceptionId` is the trap the student fell into (null when right or untagged).
+/// Visible only to the student; teachers see class totals only.
+model McqAnswer {
+  id              String         @id @default(cuid())
+  sessionId       String
+  position        Int
+  userId          String
+  questionId      String
+  chosenIndex     Int
+  correct         Boolean
+  misconceptionId String?
+  /// How sure the student was before seeing the answer: SURE | UNSURE | GUESS (null for answers from before the check)
+  confidence      String?
+  /// Boss Battles: the energy (1–10) spent on this attack; decides the damage
+  energy          Int?
+  createdAt       DateTime       @default(now())
+  session         McqSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question        McqQuestion    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  misconception   Misconception? @relation(fields: [misconceptionId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, position])
+  @@index([userId, createdAt])
+  @@index([questionId])
+}
+
+/// The Explain tab's AI explanation of one approved note: summary, key points, phrases to highlight, and a
+/// simple explanation of each section in the note's own order. Made once and reused; remade when the note's text changes.
+model NoteExplanation {
+  noteId     String   @id
+  /// JSON: { summary, keyPoints: string[], highlights: string[], sections: { heading, explanation }[] }
+  content    String
+  /// Hash of the note text it was made from
+  sourceHash String
+  createdAt  DateTime @default(now())
+  note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+/// The Explain tab's interactive 3D model of a lesson, made on request ("Show in 3D") and saved.
+model NoteModel3D {
+  noteId     String   @id
+  /// JSON scene: { title, intro, objects: [...], steps: [...] } (see src/lib/model3d-schema.ts)
+  content    String
+  /// "library" (a hand-built model matched to the lesson; no AI) or "ai" (built by AI from the lesson's text)
+  source     String
+  /// Which library model, when source is "library"
+  libraryId  String?
+  /// Hash of the note text it was made for
+  sourceHash String
+  createdAt  DateTime @default(now())
+  note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+/// A file attached to a note (PDF, Word, PowerPoint, Excel or plain text). Checked by content on upload,
+/// stored privately and only ever downloaded (never shown inside the app), never sent to the AI.
+model NoteAttachment {
+  id        String   @id @default(cuid())
+  noteId    String
+  /// The name shown and used for downloads (path parts and control characters removed)
+  fileName  String
+  mimeType  String
+  size      Int
+  filePath  String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+}
+
+/// A class's exam pattern set by a teacher: the lessons it covers and sections of a question type, count and marks each.
+model ExamPattern {
+  id              String                  @id @default(cuid())
+  classroomId     String
+  name            String
+  durationMinutes Int
+  /// General instructions printed at the top of the paper
+  instructions    String                  @default("")
+  /// JSON array of { name, type, count, marks, note }
+  sections        String
+  createdAt       DateTime                @default(now())
+  classroom       Classroom               @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  /// The lessons this exam covers (only lessons with approved notes can be chosen)
+  lessons         ExamPatternChapter[]
+  attachments     ExamPatternAttachment[]
+  assessments     Assessment[]
+
+  @@index([classroomId])
+}
+
+/// A lesson (chapter) covered by an exam pattern.
+model ExamPatternChapter {
+  patternId String
+  chapterId String
+  pattern   ExamPattern @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  chapter   Chapter     @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@id([patternId, chapterId])
+  @@index([chapterId])
+}
+
+/// A file attached to an exam pattern by a teacher (e.g. the school's circular or a past paper). Whole class can download.
+model ExamPatternAttachment {
+  id        String      @id @default(cuid())
+  patternId String
+  fileName  String
+  mimeType  String
+  size      Int
+  filePath  String
+  position  Int         @default(0)
+  createdAt DateTime    @default(now())
+  pattern   ExamPattern @relation(fields: [patternId], references: [id], onDelete: Cascade)
+
+  @@index([patternId])
+}
