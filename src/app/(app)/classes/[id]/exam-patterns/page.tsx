@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PatternEditor } from "@/components/exam-patterns/pattern-editor";
 import { Card, CardHeader, Collapsible, EmptyState } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { totalMarks, totalQuestions, type Pattern } from "@/lib/exam-schema";
@@ -17,7 +17,7 @@ export default async function ExamPatternsPage({ params }: { params: Promise<{ i
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const teacher = access.role === "TEACHER";
+  const teacher = can(access, "study");
   const patterns = (await db.examPattern.findMany({
     where: { classroomId: id },
     orderBy: { createdAt: "asc" },
@@ -31,7 +31,7 @@ export default async function ExamPatternsPage({ params }: { params: Promise<{ i
       <Card>
         <CardHeader icon={<ListChecks className="size-5" />} title="Exam patterns" description="Which lessons each exam covers, and how it is set out: sections, types of questions and marks." />
         {patterns.length === 0
-          ? <EmptyState icon={<ListChecks className="size-5" />} title="No exam patterns yet" description="Your teacher hasn't added any exam patterns yet." />
+          ? <EmptyState icon={<ListChecks className="size-5" />} title="No exam patterns yet" description={access.kind === "ROOM" ? "Nobody has added any exam patterns here yet." : "Your teacher hasn't added any exam patterns yet."} />
           : (
             <ul className="divide-y divide-border px-5 pb-2" data-testid="pattern-list">
               {patterns.map((p) => (

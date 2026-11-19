@@ -8,7 +8,7 @@ import { McqManager } from "@/components/study/mcq-manager";
 import { DraftReview } from "@/components/study/draft-review";
 import { McqRunner } from "@/components/study/mcq-runner";
 import { Collapsible, SubjectDot } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { subjectColor } from "@/lib/constants";
 import { formatDate } from "@/lib/dates";
@@ -25,7 +25,9 @@ export default async function StudyChapterPage({ params }: { params: Promise<{ i
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const teacher = access.role === "TEACHER";
+  // teacher: makes and checks study material. learner: practises with it. (In their own space a student is both.)
+  const teacher = can(access, "study");
+  const learner = access.role === "STUDENT";
   const chapter = await db.chapter.findFirst({ where: { id: chapterId, subject: { classroomId: id } }, include: { subject: { select: { name: true, color: true } } } });
   if (!chapter) notFound();
 
@@ -52,7 +54,7 @@ export default async function StudyChapterPage({ params }: { params: Promise<{ i
   // Written answers are marked by AI, so a student needs the AI on and their consent form confirmed (the same rule as adding notes).
   const quizBlocked = !aiEnabled()
     ? "AI is off, so written answers can't be checked right now."
-    : !teacher && !access.membership?.consentVerifiedAt
+    : learner && !access.membership?.consentVerifiedAt
       ? "Your teacher needs to confirm your parent/guardian consent form before the AI can check your written answers. Ask your teacher."
       : null;
   const drafts = allQuestions.filter((q) => q.status === "DRAFT").length;
@@ -71,7 +73,7 @@ export default async function StudyChapterPage({ params }: { params: Promise<{ i
       <Link href={`/classes/${id}/study`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-text"><ArrowLeft className="size-4" /> All chapters</Link>
       <div>
         <p className="flex items-center gap-2 text-sm text-muted"><SubjectDot color={subjectColor(chapter.subject.color)} /> {chapter.subject.name}</p>
-        <h2 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">{chapter.name} {!teacher && <ReadinessBadge percent={percent} level={levelOf(percent)} />}</h2>
+        <h2 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">{chapter.name} {learner && <ReadinessBadge percent={percent} level={levelOf(percent)} />}</h2>
         <p className="mt-1 text-sm"><Link href={`/classes/${id}/notebook/chapter/${chapterId}`} className="text-primary hover:underline">Read the notes for this chapter</Link></p>
       </div>
 
@@ -91,20 +93,20 @@ export default async function StudyChapterPage({ params }: { params: Promise<{ i
         </Collapsible>
       )}
 
-      <Collapsible icon={<ListChecks className="size-5" />} title={teacher ? "Quiz: what students see" : "Quiz yourself"} meta="Answer in your own words" defaultOpen={!teacher}>
+      <Collapsible icon={<ListChecks className="size-5" />} title={teacher && !learner ? "Quiz: what students see" : "Quiz yourself"} meta="Answer in your own words" defaultOpen={learner}>
           <QuizRunner classroomId={id} chapterId={chapterId} blocked={quizBlocked}
             notes={notes.map((n) => ({ id: n.id, title: n.title, date: dateOf(n), questions: questions.filter((q) => q.noteId === n.id).length }))} />
       </Collapsible>
 
-      <Collapsible icon={<Target className="size-5" />} title={teacher ? "Multiple-choice practice: what students see" : "Multiple-choice practice"}
-        meta={`${approvedMcqs} questions · each wrong answer shows the trap behind it`} defaultOpen={!teacher} data-testid="mcq-practice">
+      <Collapsible icon={<Target className="size-5" />} title={teacher && !learner ? "Multiple-choice practice: what students see" : "Multiple-choice practice"}
+        meta={`${approvedMcqs} questions · each wrong answer shows the trap behind it`} defaultOpen={learner} data-testid="mcq-practice">
         <div className="space-y-4">
           {approvedMcqs > 0
-            ? <McqRunner classroomId={id} target={{ chapterId }} generateCount={teacher ? 0 : studentQuestionCount} />
-            : !teacher && studentQuestionCount > 0 && aiEnabled()
+            ? <McqRunner classroomId={id} target={{ chapterId }} generateCount={learner ? studentQuestionCount : 0} />
+            : learner && studentQuestionCount > 0 && aiEnabled()
               ? <McqRunner classroomId={id} target={{ chapterId }} generateCount={studentQuestionCount} generateOnly />
               : <p className="text-sm text-muted">No multiple-choice questions yet{teacher ? ". Make some below." : "."}</p>}
-          {!teacher && draftMcqs.length > 0 && (
+          {learner && draftMcqs.length > 0 && (
             <details className="rounded-xl border border-border" data-testid="drafts-to-check">
               <summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm font-semibold">
                 Draft questions to check <span className="font-normal text-muted">({draftMcqs.length})</span>

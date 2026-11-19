@@ -7,6 +7,7 @@ import { lessonFinished } from "@/app/actions/game";
 import { useEffect, useRef, useState } from "react";
 import type { Lesson, LessonNote, LessonQuiz, LessonStep, LessonVisual } from "@/lib/knowa/lessons";
 import { Button, Card, cn } from "../ui";
+import { HelpMeUnderstand } from "../understand";
 
 /**
  * Plays a narrated lesson like a tutor at your desk: it speaks each step (the browser's own voice, on the
@@ -16,7 +17,7 @@ import { Button, Card, cn } from "../ui";
  */
 export function LessonPlayer({ lesson, backHref, backLabel = "Back", onFinish, classroomId }: {
   lesson: Lesson; backHref: string; backLabel?: string;
-  /** Finishing the lesson in this class earns XP (once per lesson per day) and counts towards the streak. */
+  /** The class it's played in, if any. Finishing earns XP (once per lesson per day) and counts towards the streak either way. */
   classroomId?: string;
   /** Called once when the lesson ends (and again with the quiz score once the check is done). */
   onFinish?: (r: { quiz?: { right: number; total: number } }) => void;
@@ -233,7 +234,7 @@ export function LessonPlayer({ lesson, backHref, backLabel = "Back", onFinish, c
     const st = stageRef.current; if (st?.def?.params.some((p: { id: string }) => p.id === "run")) st.set("run", 0);
     if (!finished.current) {
       finished.current = true; onFinish?.({});
-      if (classroomId) void lessonFinished(classroomId, lesson.id).then((r) => { if (r.ok) router.refresh(); }).catch(() => {});
+      void lessonFinished(classroomId ?? null, lesson.id).then((r) => { if (r.ok) router.refresh(); }).catch(() => {});
     }
     await speak(lesson.quiz.length ? "That is the lesson done. Try the quick check, or replay any step." : "That is the lesson done. Replay any step, or go back to your class.", tok);
     if (lesson.quiz.length && alive(tok)) setTab("quiz");
@@ -339,6 +340,10 @@ export function LessonPlayer({ lesson, backHref, backLabel = "Back", onFinish, c
               <Card className="p-5 text-sm text-muted">{state === "idle" ? "Start the lesson: the key points for each step appear here as the tutor explains." : "Listen and watch the model…"}</Card>
             ) : (
               <NoteCardView card={current} now />
+            )}
+            {/* Fixed 3D lessons only (a class note read aloud has its own explanation on the Explain tab). */}
+            {state !== "idle" && !lesson.id.startsWith("note-") && (
+              <HelpMeUnderstand key={`${lesson.id}-${step}`} target={{ kind: "lesson", lessonId: lesson.id, step, classroomId: classroomId ?? null }} label="I don't understand this step" />
             )}
             {earlier.length > 0 && (
               <details className="rounded-2xl border border-border bg-surface" open={earlier.length <= 2}>

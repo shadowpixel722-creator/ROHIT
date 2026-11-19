@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../ui";
-import { activeItem, classSections, parseClassPath } from "./class-nav";
+import { activeItem, classSections, parseClassPath, type ClassView } from "./class-nav";
 
 /**
  * Inside a class: the current section's title and its pages as sub-tabs (for example Practise →
  * Study · Flashcards · Mistake Map). Keeps one short row instead of every page in the class.
  */
-export function SectionTabs({ classroomId, teacher, pending }: { classroomId: string; teacher: boolean; pending: number }) {
+export function SectionTabs({ classroomId, view, pending }: { classroomId: string; view: ClassView; pending: number }) {
   const path = usePathname();
   const parsed = parseClassPath(path);
-  const sections = classSections(teacher);
+  const sections = classSections(view);
   const { section, item } = activeItem(sections, parsed?.rest ?? "");
   const base = `/classes/${classroomId}`;
   return (

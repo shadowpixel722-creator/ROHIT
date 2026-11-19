@@ -21,7 +21,7 @@ export default async function ExplainIndex({ params }: { params: Promise<{ id: s
   const showcase = lessons3d.length > 0 && (
     <section className="space-y-2">
       <div><h2 className="text-base font-semibold">Interactive 3D lessons</h2><p className="text-sm text-muted">Narrated lessons for Class {access.classroom.grade ?? "6–10"}: the tutor talks you through a 3D model, moves it and writes on a notepad. Take over any time.</p></div>
-      <LessonCards lessons={lessons3d} classroomId={id} />
+      <LessonCards lessons={lessons3d} basePath={`/classes/${id}/explain/lesson`} />
     </section>
   );
   const [subjects, counts] = await Promise.all([

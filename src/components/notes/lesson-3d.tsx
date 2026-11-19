@@ -8,6 +8,7 @@ import { makeLessonModel } from "@/app/actions/model3d";
 import type { Scene } from "@/lib/model3d-schema";
 import { useRunAction } from "../toast";
 import { Alert, Badge, Button } from "../ui";
+import { HelpMeUnderstand } from "../understand";
 
 // three.js is only downloaded when someone opens a model.
 const ModelViewer = dynamic(() => import("./model-viewer").then((m) => m.ModelViewer), {
@@ -77,6 +78,7 @@ export function Lesson3D({ noteId, model, teacher, libraryFits }: Props) {
         <div className="mt-3 space-y-3">
           {model.scene.intro && <p className="text-sm leading-relaxed">{model.scene.intro}</p>}
           <ModelViewer scene={model.scene} />
+          <HelpMeUnderstand target={{ kind: "model", noteId }} label="I don't understand this model" />
           <Button size="sm" variant="ghost" onClick={() => setOpen(false)}><X className="size-3.5" /> Close 3D model</Button>
         </div>
       )}

@@ -7,7 +7,7 @@ import { KeyHighlighter } from "@/components/notes/key-highlighter";
 import { Lesson3D } from "@/components/notes/lesson-3d";
 import { ReadingView } from "@/components/notes/reading-view";
 import { Collapsible, SubjectDot } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { subjectColor } from "@/lib/constants";
 import { formatDate } from "@/lib/dates";
@@ -17,6 +17,7 @@ import { lessonForChapter } from "@/lib/knowa/lessons";
 import { matchLibrary } from "@/lib/model3d-library";
 import type { Scene } from "@/lib/model3d-schema";
 import { tidyPageText } from "@/lib/tidy";
+import { HelpMeUnderstand } from "@/components/understand";
 
 export const metadata = { title: "Explain" };
 
@@ -29,7 +30,7 @@ export default async function ExplainChapter({ params }: { params: Promise<{ id:
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const teacher = access.role === "TEACHER";
+  const teacher = can(access, "study"); // can remake explanations and 3D models
   const chapter = await db.chapter.findFirst({ where: { id: chapterId, subject: { classroomId: id } }, include: { subject: { select: { name: true, color: true } } } });
   if (!chapter) notFound();
   const lesson3d = lessonForChapter(chapter.name, access.classroom.grade);
@@ -97,6 +98,8 @@ export default async function ExplainChapter({ params }: { params: Promise<{ id:
                     </ol>
                   </section>
                 )}
+
+                <HelpMeUnderstand target={{ kind: "explanation", noteId: n.id }} label="I don't understand this explanation" />
 
                 <details open className="rounded-xl border border-border">
                   <summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm font-semibold">

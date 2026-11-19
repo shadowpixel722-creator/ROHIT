@@ -7,15 +7,15 @@ const ICON: Record<string, LucideIcon> = {
   seasons: Globe2, quad: Calculator, binary: Binary, pyfor: Code2, voice: PenLine,
 };
 
-/** A grid of narrated 3D lessons. */
-export function LessonCards({ lessons, classroomId }: { lessons: Lesson[]; classroomId: string }) {
+/** A grid of narrated 3D lessons. Each links to `${basePath}/<lesson id>` (in a class, or the Lessons page). */
+export function LessonCards({ lessons, basePath }: { lessons: Lesson[]; basePath: string }) {
   return (
     <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="lesson-cards">
       {lessons.map((l) => {
         const Icon = ICON[l.id] ?? Box;
         return (
           <li key={l.id}>
-            <Link href={`/classes/${classroomId}/explain/lesson/${l.id}`} data-testid="lesson-card"
+            <Link href={`${basePath}/${l.id}`} data-testid="lesson-card"
               className="group flex h-full gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card transition-colors hover:border-primary/40">
               <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#0d1530] text-[#9db3ff] group-hover:bg-[#13203f]"><Icon className="size-5" aria-hidden /></span>
               <span className="min-w-0">

@@ -320,7 +320,7 @@ test("teachers can request to join an existing class; the creator approves", asy
   const co = c.page;
   co.on("dialog", (d) => d.accept());
   await signUp(co, "Teacher", "Ms Rao", `co-${uid()}@example.com`);
-  await co.getByRole("heading", { name: "Join an existing class as a teacher" }).scrollIntoViewIfNeeded();
+  await co.getByRole("heading", { name: "Join an existing class or a student room" }).scrollIntoViewIfNeeded();
   await co.getByLabel("Class code").fill(code);
   await co.getByRole("button", { name: "Request to join" }).click();
   await expect(co.getByText(/Request sent\. The teacher of 8-C needs to approve you/)).toBeVisible();

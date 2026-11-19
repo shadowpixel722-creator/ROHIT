@@ -9,6 +9,7 @@ import { CONFIDENCE_LABEL, type Confidence } from "@/lib/confidence";
 import { levelOf, MAX_ANSWER_CHARS, VERDICT_LABEL, type QuizQuestionView, type QuizResult, type Verdict } from "@/lib/quiz";
 import { ConfidencePicker, confidenceNote } from "./confidence-picker";
 import { useRunAction } from "../toast";
+import { HelpMeUnderstand } from "../understand";
 import { Alert, Badge, Button, Chevron, cn, Textarea } from "../ui";
 import { ReadinessBadge } from "./readiness-badge";
 
@@ -17,7 +18,7 @@ export type QuizNote = { id: string; title: string; date: string; questions: num
 type Phase =
   | { name: "choose" }
   | { name: "taking"; attemptId: string; questions: QuizQuestionView[]; answers: string[]; confidence: (Confidence | null)[]; noteIds: string[]; missing: boolean }
-  | { name: "result"; result: QuizResult; noteIds: string[] };
+  | { name: "result"; result: QuizResult; noteIds: string[]; attemptId: string };
 
 const TONE: Record<Verdict, "success" | "warn" | "danger" | "neutral"> = { CORRECT: "success", PARTLY: "warn", INCORRECT: "danger", SKIPPED: "neutral" };
 const points = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -55,7 +56,7 @@ export function QuizRunner({ classroomId, chapterId, notes, blocked }: { classro
     setBusy(true);
     const res = await runAction(submitQuiz(p.attemptId, p.answers, p.answers.map((a, i) => (a.trim().length >= 2 ? p.confidence[i] : null)))); // if marking fails, the answers stay on screen to resend
     setBusy(false);
-    if (res.ok && res.data) setPhase({ name: "result", result: res.data, noteIds: p.noteIds });
+    if (res.ok && res.data) setPhase({ name: "result", result: res.data, noteIds: p.noteIds, attemptId: p.attemptId });
   }
 
   if (blocked) return <div data-testid="quiz-blocked"><Alert tone="warn">{blocked}</Alert></div>;
@@ -96,6 +97,7 @@ export function QuizRunner({ classroomId, chapterId, notes, blocked }: { classro
           {phase.questions.map((q, qi) => (
             <li key={q.id} className="space-y-2" data-testid="quiz-question">
               <label htmlFor={`ans-${q.id}`} className="block font-medium"><span className="mr-1.5 text-faint">{qi + 1}.</span>{q.question}</label>
+              <HelpMeUnderstand key={`${phase.attemptId}-${qi}`} target={{ kind: "question", attemptId: phase.attemptId, index: qi }} label="I don't understand the question" />
               <Textarea id={`ans-${q.id}`} className="min-h-24" value={phase.answers[qi]} maxLength={MAX_ANSWER_CHARS} placeholder="Write your answer here…" disabled={busy}
                 onChange={(e) => setPhase({ ...phase, answers: phase.answers.map((a, i) => (i === qi ? e.target.value : a)) })} />
               <VoiceInput onText={(t) => setPhase((p) => (p.name === "taking" ? { ...p, answers: p.answers.map((a, i) => (i === qi ? `${a}${a && !/\s$/.test(a) ? " " : ""}${t}`.slice(0, MAX_ANSWER_CHARS) : a)) } : p))} />
@@ -172,6 +174,7 @@ export function QuizRunner({ classroomId, chapterId, notes, blocked }: { classro
                   {q.feedback && <p>{q.feedback}</p>}
                   {(() => { const n = q.verdict === "SKIPPED" ? null : confidenceNote(q.verdict === "CORRECT", q.confidence); return n && <p className={cn("text-xs font-medium", n.tone === "danger" ? "text-danger" : "text-warn")} data-testid="quiz-confidence-note">{n.text}</p>; })()}
                   <p className="text-xs text-muted"><span className="font-medium text-text">Model answer:</span> {q.modelAnswer}</p>
+                  <HelpMeUnderstand key={`${phase.attemptId}-${i}-after`} target={{ kind: "question", attemptId: phase.attemptId, index: i }} label="I still don't understand" />
                 </div>
               </details>
             </li>

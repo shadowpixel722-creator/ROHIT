@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { createSession, destroySession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensurePersonalSpace } from "@/lib/rooms";
 import { firstError, loginSchema, registerSchema } from "@/lib/validation";
 
 let dummy: Promise<string> | null = null;
@@ -37,6 +38,7 @@ export async function registerAction(_prev: AuthState, form: FormData): Promise<
       ? { role: "TEACHER", name: d.name, email: d.email, passwordHash, school: d.school }
       : { role: "STUDENT", name: d.name, email: d.email, passwordHash, guardianName: d.guardianName, consentAt: new Date() },
   });
+  await ensurePersonalSpace(user);
   await createSession(user.id);
   redirect("/classes");
 }

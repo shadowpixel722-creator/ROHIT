@@ -13,5 +13,5 @@ export default async function NewNotePage({ params, searchParams }: { params: Pr
   if (!access) notFound();
   const teacher = access.role === "TEACHER";
   const subjects = canUpload(access) ? await formSubjects(id) : [];
-  return <NoteForm classroomId={id} subjects={subjects} teacher={teacher} defaultSubjectId={subjects.some((s) => s.id === sp.subject) ? sp.subject : undefined} />;
+  return <NoteForm classroomId={id} subjects={subjects} teacher={teacher} room={access.kind !== "CLASS"} defaultSubjectId={subjects.some((s) => s.id === sp.subject) ? sp.subject : undefined} />;
 }

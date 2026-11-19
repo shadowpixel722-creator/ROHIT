@@ -1,25 +1,28 @@
 "use client";
 
-import { Check, ChevronsUpDown, Flame, FolderOpen, Home, LogOut, Settings, Sparkles, Users } from "lucide-react";
+import { Box, Check, ChevronsUpDown, Flame, FolderOpen, Home, LogOut, Settings, Sparkles, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { logoutAction } from "@/app/actions/auth";
-import { activeItem, classSections, parseClassPath } from "./classes/class-nav";
+import { activeItem, classSections, parseClassPath, viewLabel, type ClassView } from "./classes/class-nav";
 import { Logo } from "./logo";
 import { ThemeSwitcher } from "./theme";
 import { cn } from "./ui";
 
-/** `pending`: notes waiting for this teacher to review (0 for students). */
 /** The signed-in person's streak and coins, for the chip in the sidebar and top bar. */
 export type NavGame = { streak: number; doneToday: boolean; coins: number };
 
-export type NavClass = { id: string; name: string; grade: string | null; teacher: boolean; pending?: number };
+/** `pending`: notes waiting for this teacher to review (0 for everyone else). `owner`: the student head of a room. */
+export type NavClass = { id: string; name: string; grade: string | null; kind: string; view: ClassView; owner: boolean; pending?: number };
 
-export const NAV: { href: string; label: string; Icon: typeof Users }[] = [
+/** `phone: false`: left off the phone tab bar (too many tabs); reached from another page there. */
+export const NAV: { href: string; label: string; Icon: typeof Users; phone?: false }[] = [
   { href: "/dashboard", label: "Home", Icon: Home },
   { href: "/classes", label: "Classes", Icon: Users },
+  { href: "/lessons", label: "Lessons", Icon: Box },
   { href: "/hero", label: "My hero", Icon: Sparkles },
+  { href: "/leaderboard", label: "Leaderboard", Icon: Trophy, phone: false },
   { href: "/files", label: "My files", Icon: FolderOpen },
   { href: "/settings", label: "Settings", Icon: Settings },
 ];
@@ -46,7 +49,7 @@ function useLastPages() {
     if (top) saved = { ...saved, [top.href]: path + window.location.search };
     const inClass = parseClassPath(path);
     if (inClass) {
-      const { section } = activeItem(classSections(true).concat(classSections(false)), inClass.rest);
+      const { section } = activeItem(classSections("teacher").concat(classSections("student")), inClass.rest);
       saved = { ...saved, [`class:${inClass.id}:${section.id}`]: path };
     }
     try { sessionStorage.setItem(LAST_KEY, JSON.stringify(saved)); } catch { /* ignore */ }
@@ -91,7 +94,7 @@ export function Sidebar({ name, email, role, classes, game }: { name: string; em
       {cls && parsed && (
         <div className="mt-6 flex min-h-0 flex-1 flex-col border-t border-border pt-5">
           <ClassSwitcher classes={classes} current={cls} />
-          <ClassNav classId={cls.id} teacher={cls.teacher} rest={parsed.rest} pending={cls.pending ?? 0} />
+          <ClassNav classId={cls.id} view={cls.view} rest={parsed.rest} pending={cls.pending ?? 0} />
         </div>
       )}
       {!cls && <div className="flex-1" />}
@@ -126,8 +129,8 @@ function GameChip({ game, compact, className }: { game: NavGame; compact?: boole
 }
 
 /** The current class's sections and pages, in the sidebar. */
-function ClassNav({ classId, teacher, rest, pending }: { classId: string; teacher: boolean; rest: string; pending: number }) {
-  const sections = classSections(teacher);
+function ClassNav({ classId, view, rest, pending }: { classId: string; view: ClassView; rest: string; pending: number }) {
+  const sections = classSections(view);
   const { item } = activeItem(sections, rest);
   const base = `/classes/${classId}`;
   return (
@@ -178,7 +181,7 @@ function ClassSwitcher({ classes, current }: { classes: NavClass[]; current: Nav
         <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-sm font-semibold text-primary-fg">{initials(current.name)}</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">{current.name}</span>
-          <span className="block text-xs text-muted">{current.grade ? `Class ${current.grade}` : "Class"} · {current.teacher ? "Teacher" : "Student"}</span>
+          <span className="block text-xs text-muted">{current.grade ? `Class ${current.grade}` : current.kind === "CLASS" ? "Class" : current.kind === "ROOM" ? "Student room" : "Personal"} · {viewLabel(current.kind, current.view, current.owner)}</span>
         </span>
         <ChevronsUpDown className="size-4 text-faint" aria-hidden />
       </button>
@@ -221,12 +224,12 @@ export function MobileTabBar({ classes }: { classes: NavClass[] }) {
   const links = useLastPages();
   const items = cls && parsed
     ? [{ href: "/dashboard", label: "Home", Icon: Home, on: false },
-       ...classSections(cls.teacher).map((s) => {
+       ...classSections(cls.view).map((s) => {
          const base = `/classes/${cls.id}`;
          const first = s.items[0].slug ? `${base}/${s.items[0].slug}` : base;
-         return { href: links.section(cls.id, s.id, first), label: s.label, Icon: s.Icon, on: activeItem(classSections(cls.teacher), parsed.rest).section.id === s.id };
+         return { href: links.section(cls.id, s.id, first), label: s.label, Icon: s.Icon, on: activeItem(classSections(cls.view), parsed.rest).section.id === s.id };
        })]
-    : NAV.map((n) => ({ href: links.top(n.href), label: n.label, Icon: n.Icon, on: isActive(path, n.href) }));
+    : NAV.filter((n) => n.phone !== false).map((n) => ({ href: links.top(n.href), label: n.label, Icon: n.Icon, on: isActive(path, n.href) }));
   return (
     <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden print:hidden">
       <ul className="mx-auto grid max-w-lg" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>

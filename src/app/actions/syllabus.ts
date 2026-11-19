@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTeacher, requireTeacherOfChapter, requireTeacherOfSubject } from "@/lib/access";
+import { requirePower, requirePowerOfChapter, requirePowerOfSubject } from "@/lib/access";
 import { run, UserError } from "@/lib/action";
 import { requireUserId } from "@/lib/auth";
 import { SUBJECT_COLOR_KEYS } from "@/lib/constants";
@@ -26,7 +26,7 @@ async function addIndexChapters(subjectId: string, chapters: string[]) {
 export async function addSubject(classroomId: string, input: unknown) {
   return run(async () => {
     const userId = await requireUserId();
-    const { classroom } = await requireTeacher(userId, classroomId);
+    const { classroom } = await requirePower(userId, classroomId, "syllabus");
     const d = subjectSchema.parse(input);
     const existing = await db.subject.findMany({ where: { classroomId }, select: { name: true } });
     if (existing.length >= 30) throw new UserError("A class can have up to 30 subjects.");
@@ -46,7 +46,7 @@ export async function addSubject(classroomId: string, input: unknown) {
 export async function loadNcertChapters(subjectId: string) {
   return run(async () => {
     const userId = await requireUserId();
-    const s = await requireTeacherOfSubject(userId, subjectId);
+    const s = await requirePowerOfSubject(userId, subjectId, "syllabus");
     const [subject, classroom] = await Promise.all([
       db.subject.findUniqueOrThrow({ where: { id: subjectId }, select: { name: true } }),
       db.classroom.findUniqueOrThrow({ where: { id: s.classroomId }, select: { grade: true } }),
@@ -64,7 +64,7 @@ export async function loadNcertChapters(subjectId: string) {
 export async function updateSubject(id: string, input: unknown) {
   return run(async () => {
     const userId = await requireUserId();
-    const s = await requireTeacherOfSubject(userId, id);
+    const s = await requirePowerOfSubject(userId, id, "syllabus");
     const d = subjectSchema.partial().parse(input);
     if (d.name) {
       const clash = await db.subject.findMany({ where: { classroomId: s.classroomId, NOT: { id } }, select: { name: true } });
@@ -78,7 +78,7 @@ export async function updateSubject(id: string, input: unknown) {
 export async function deleteSubject(id: string) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacherOfSubject(userId, id);
+    await requirePowerOfSubject(userId, id, "syllabus");
     await db.subject.delete({ where: { id } });
     done();
   });
@@ -88,7 +88,7 @@ export async function deleteSubject(id: string) {
 export async function addChapters(subjectId: string, text: string) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacherOfSubject(userId, subjectId);
+    await requirePowerOfSubject(userId, subjectId, "syllabus");
     if (typeof text !== "string" || text.length > 20_000) throw new UserError("That's too much text.");
     const names = text
       .split(/\r?\n/)
@@ -111,7 +111,7 @@ export async function addChapters(subjectId: string, text: string) {
 export async function renameChapter(id: string, name: string) {
   return run(async () => {
     const userId = await requireUserId();
-    const c = await requireTeacherOfChapter(userId, id);
+    const c = await requirePowerOfChapter(userId, id, "syllabus");
     const data = chapterSchema.parse({ name });
     const others = await db.chapter.findMany({ where: { subjectId: c.subjectId, NOT: { id } }, select: { name: true } });
     if (others.some((o) => o.name.toLowerCase() === data.name.toLowerCase())) throw new UserError(`This subject already has a chapter called “${data.name}”.`);
@@ -127,7 +127,7 @@ export async function renameChapter(id: string, name: string) {
 export async function deleteChapter(id: string) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacherOfChapter(userId, id);
+    await requirePowerOfChapter(userId, id, "syllabus");
     await db.chapter.delete({ where: { id } });
     done();
   });
@@ -136,7 +136,7 @@ export async function deleteChapter(id: string) {
 export async function moveChapter(id: string, direction: "up" | "down") {
   return run(async () => {
     const userId = await requireUserId();
-    const c = await requireTeacherOfChapter(userId, id);
+    const c = await requirePowerOfChapter(userId, id, "syllabus");
     const all = await db.chapter.findMany({ where: { subjectId: c.subjectId }, orderBy: [{ position: "asc" }, { id: "asc" }], select: { id: true } });
     const i = all.findIndex((x) => x.id === id);
     const j = direction === "up" ? i - 1 : i + 1;

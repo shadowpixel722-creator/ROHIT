@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { FlashcardDeck } from "@/components/study/flashcard-deck";
 import { StudyManager } from "@/components/study/study-manager";
 import { Collapsible, SubjectDot } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { subjectColor } from "@/lib/constants";
 import { formatDate } from "@/lib/dates";
@@ -20,7 +20,9 @@ export default async function FlashcardChapter({ params }: { params: Promise<{ i
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const teacher = access.role === "TEACHER";
+  // teacher: makes and checks study material. learner: practises with it. (In their own space a student is both.)
+  const teacher = can(access, "study");
+  const learner = access.role === "STUDENT";
   const chapter = await db.chapter.findFirst({ where: { id: chapterId, subject: { classroomId: id } }, include: { subject: { select: { name: true, color: true } } } });
   if (!chapter) notFound();
   const [notes, allCards] = await Promise.all([
@@ -58,7 +60,7 @@ export default async function FlashcardChapter({ params }: { params: Promise<{ i
         </Collapsible>
       )}
 
-      <Collapsible icon={<SquareStack className="size-5" />} title={teacher ? "Flashcards: what students see" : "Flashcards"} defaultOpen={!teacher}
+      <Collapsible icon={<SquareStack className="size-5" />} title={teacher && !learner ? "Flashcards: what students see" : "Flashcards"} defaultOpen={learner}
         meta={`${cards.length} card${cards.length === 1 ? "" : "s"} · flip each one`}>
         <FlashcardDeck key={cards.map((c) => c.id).join(",")} cards={cards.map((c) => ({ id: c.id, front: c.front, back: c.back, from: c.noteId ? (titleOf.get(c.noteId) ?? null) : null }))} />
       </Collapsible>

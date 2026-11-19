@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import OpenAI from "openai";
 import { z } from "zod";
-import { requireTeacher } from "@/lib/access";
+import { requirePower } from "@/lib/access";
 import { readPattern } from "@/lib/ai-study";
 import { MAX_ATTACHMENTS } from "@/lib/attachment-check";
 import { attachmentsFrom, saveAttachments } from "@/lib/attachment-save";
@@ -28,7 +28,7 @@ const lessonsSchema = z.array(z.string().min(1)).min(1, "Choose at least one les
 export async function savePattern(classroomId: string, id: string | null, input: unknown, chapterIds: unknown) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacher(userId, classroomId);
+    await requirePower(userId, classroomId, "study");
     const p = patternSchema.parse(input);
     const wanted = [...new Set(lessonsSchema.parse(chapterIds))];
     const ok = await db.chapter.findMany({
@@ -60,7 +60,7 @@ export async function deletePattern(id: string) {
     const userId = await requireUserId();
     const p = await db.examPattern.findUnique({ where: { id }, select: { classroomId: true } });
     if (!p) throw new UserError("That pattern no longer exists.");
-    await requireTeacher(userId, p.classroomId);
+    await requirePower(userId, p.classroomId, "study");
     const files = await db.examPatternAttachment.findMany({ where: { patternId: id }, select: { filePath: true } });
     await db.examPattern.delete({ where: { id } });
     await removeUploads(files.map((f) => f.filePath));
@@ -72,7 +72,7 @@ export async function deletePattern(id: string) {
 export async function readPastedPattern(classroomId: string, description: string) {
   return run(async (): Promise<Pattern & { statedMarks: number | null }> => {
     const userId = await requireUserId();
-    await requireTeacher(userId, classroomId);
+    await requirePower(userId, classroomId, "study");
     const text = z.string().trim().min(15, "Describe the pattern: sections, number of questions and marks.").max(4000).parse(description);
     if (!aiEnabled()) throw new UserError("AI is off, so a pasted pattern can't be read right now. Set the sections by hand.");
     const start = new Date();
@@ -100,7 +100,7 @@ async function teacherOfPattern(patternId: string) {
   const userId = await requireUserId();
   const p = await db.examPattern.findUnique({ where: { id: patternId }, select: { classroomId: true } });
   if (!p) throw new UserError("That pattern no longer exists.");
-  await requireTeacher(userId, p.classroomId);
+  await requirePower(userId, p.classroomId, "study");
   return p.classroomId;
 }
 

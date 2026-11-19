@@ -1,5 +1,6 @@
 import { BarChart3, BookOpenCheck, CalendarClock, ClipboardCheck, GraduationCap, History, LineChart as LineChartIcon, NotebookPen, Sparkles, Target, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
+import { LessonCards } from "@/components/knowa/lesson-cards";
 import { ReadinessBadge } from "@/components/study/readiness-badge";
 import { Badge, ButtonLink, Card, CardHeader, cn, EmptyState, PageHeader, ProgressBar, SubjectDot } from "@/components/ui";
 import { countdown, kindColor, kindLabel } from "@/lib/assessments";
@@ -10,6 +11,7 @@ import { BarList, ColumnChart, LineChart } from "@/components/charts";
 import { getTimeZone, getToday } from "@/lib/server";
 import { classTrapMap, studentTraps } from "@/lib/mistake-queries";
 import { classTrapSentence, trapSentence } from "@/lib/mistakes";
+import { LESSONS } from "@/lib/knowa/lessons";
 
 const fmtPoints = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 /** "Asha Verma" -> "Asha"; "Mr Sharma" -> "Mr Sharma" (a title alone isn't a greeting). */
@@ -43,7 +45,25 @@ async function StudentDashboard({ userId, today, tz, greeting, dateLine, classId
     return (
       <div className="animate-fade-in">
         <Header greeting={greeting} dateLine={dateLine} classId={classId} />
-        <Card><EmptyState icon={<Users className="size-5" />} title="Join your class to get started" description="Your dashboard shows your tests, assignments, exams and progress once you've joined a class." action={<ButtonLink href="/classes">Join a class</ButtonLink>} /></Card>
+        {classId ? (
+          <Card><EmptyState icon={<Users className="size-5" />} title="Join your class to get started" description="Your dashboard shows your tests, assignments, exams and progress once you've joined a class." action={<ButtonLink href="/classes">Join a class</ButtonLink>} /></Card>
+        ) : (
+          <div className="space-y-5" data-testid="no-class-home">
+            <Card>
+              <CardHeader icon={<Users className="size-5" />} title="Have a class code?"
+                description="Join your class to see its notebook, quizzes, flashcards, tests and the AI tutor. Without one, add your own subjects and notes in My space, start a student room with classmates, or learn below."
+                action={<ButtonLink href="/classes" variant="secondary">Classes and rooms</ButtonLink>} />
+            </Card>
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div><h2 className="text-base font-semibold">Start learning now</h2><p className="text-sm text-muted">Narrated 3D lessons: the tutor talks you through a model you can turn and change. Finishing one earns XP and keeps your streak.</p></div>
+                <ButtonLink href="/lessons" variant="ghost" size="sm">All 3D lessons</ButtonLink>
+              </div>
+              <LessonCards lessons={LESSONS.slice(0, 6)} basePath="/lessons" />
+            </section>
+            <p className="text-sm text-muted">Also yours without a class: <Link href="/hero" className="font-medium text-primary hover:underline">My hero</Link> (streak, coins and the shop) and <Link href="/files" className="font-medium text-primary hover:underline">My files</Link> (your own notes and slides, kept on this device).</p>
+          </div>
+        )}
       </div>
     );
   }

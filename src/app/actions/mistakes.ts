@@ -7,7 +7,7 @@ import { CONFIDENCES, type Confidence } from "@/lib/confidence";
 import { revalidatePath } from "next/cache";
 import OpenAI from "openai";
 import { z } from "zod";
-import { requireMember, requireTeacher } from "@/lib/access";
+import { requireMember, requirePower } from "@/lib/access";
 import { generateMcqs } from "@/lib/ai-study";
 import { run, UserError } from "@/lib/action";
 import { requireUserId } from "@/lib/auth";
@@ -73,7 +73,7 @@ export async function generateNoteMcqs(noteId: string, replace = false, count?: 
     const userId = await requireUserId();
     const note = await db.note.findUnique({ where: { id: noteId }, select: { status: true, text: true, classroomId: true, chapterId: true, images: { orderBy: { position: "asc" }, select: { transcript: true } } } });
     if (!note) throw new UserError("Note not found.");
-    await requireTeacher(userId, note.classroomId);
+    await requirePower(userId, note.classroomId, "study");
     if (note.status !== "APPROVED") throw new UserError("Only approved notes can be used.");
     if (!note.chapterId) throw new UserError("File this note under a chapter first.");
     if (!aiEnabled()) throw new UserError("AI is off, so nothing was generated.");
@@ -107,7 +107,7 @@ export async function generateTrapMcqs(misconceptionId: string, count = 4) {
     const userId = await requireUserId();
     const m = await db.misconception.findUnique({ where: { id: misconceptionId }, select: { id: true, label: true, fix: true, subjectId: true, subject: { select: { classroomId: true } } } });
     if (!m) throw new UserError("That misconception no longer exists.");
-    await requireTeacher(userId, m.subject.classroomId);
+    await requirePower(userId, m.subject.classroomId, "study");
     if (!aiEnabled()) throw new UserError("AI is off, so nothing was generated.");
     await checkDailyLimit();
 
@@ -160,7 +160,7 @@ export async function approveMcq(id: string) {
 export async function deleteMcq(id: string) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacher(userId, await mcqClass(id));
+    await requirePower(userId, await mcqClass(id), "study");
     await db.mcqQuestion.delete({ where: { id } });
     done();
   });
@@ -169,7 +169,7 @@ export async function deleteMcq(id: string) {
 export async function approveChapterMcqs(chapterId: string) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacher(userId, (await chapterContext(chapterId)).classroomId);
+    await requirePower(userId, (await chapterContext(chapterId)).classroomId, "study");
     const r = await db.mcqQuestion.updateMany({ where: { chapterId, status: "DRAFT" }, data: { status: "APPROVED", approvedByRole: "TEACHER", approvedById: userId } });
     done();
     return { approved: r.count };
@@ -258,7 +258,7 @@ export async function answerMcq(sessionId: string, position: number, chosen: num
 export async function setStudentQuestionCount(classroomId: string, count: number) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacher(userId, classroomId);
+    await requirePower(userId, classroomId, "settings");
     const n = z.number().int().min(0).max(15).parse(count);
     await db.classroom.update({ where: { id: classroomId }, data: { studentQuestionCount: n } });
     done();

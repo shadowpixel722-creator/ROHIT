@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireMember, requireTeacher } from "@/lib/access";
+import { can, requireMember } from "@/lib/access";
 import { run, UserError } from "@/lib/action";
 import { requireUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ImageError, MAX_IMAGES_PER_NOTE, processPageImage, removeUploads, rotateStoredImage, saveClassImage } from "@/lib/files";
 import { MAX_ATTACHMENTS } from "@/lib/attachment-check";
 import { attachmentsFrom, saveAttachments } from "@/lib/attachment-save";
-import { canEdit, checkPlacement, requireUploadRight, requireVisibleNote } from "@/lib/notes";
+import { canDelete, canEdit, canManageNotes, checkPlacement, requireUploadRight, requireVisibleNote } from "@/lib/notes";
 import { aiEnabled, queueNote, queuePage } from "@/lib/transcribe";
 import { commentSchema, noteSchema, rejectSchema } from "@/lib/validation";
 
@@ -59,17 +59,19 @@ export async function createNote(form: FormData) {
       throw e;
     }
     const teacher = role === "TEACHER";
+    // Outside a classroom there's no review: a room's notes appear straight away and its moderators can hide them.
+    const publish = teacher || access.kind !== "CLASS";
     try {
       const note = await db.note.create({
         data: {
           ...d, classroomId, authorId: userId,
-          status: teacher ? "APPROVED" : "PENDING",
+          status: publish ? "APPROVED" : "PENDING",
           ...(teacher ? { reviewedById: userId, reviewedAt: new Date() } : {}),
           images: { create: images.map((img, position) => ({ ...img, position })) },
           attachments: { create: attachments.map((a, position) => ({ ...a, position })) },
         },
       });
-      if (note.status === "APPROVED") await queueNote(note.id); // teacher's own notes: read handwriting now
+      if (note.status === "APPROVED") await queueNote(note.id); // published straight away: read handwriting now
       done();
       return { id: note.id, status: note.status };
     } catch (e) {
@@ -84,7 +86,7 @@ export async function updateNote(noteId: string, form: FormData) {
   return run(async () => {
     const userId = await requireUserId();
     const { note, access } = await requireVisibleNote(userId, noteId);
-    if (!canEdit(note, access.role, userId)) throw new UserError("You can only edit your own notes.");
+    if (!canEdit(note, access, userId)) throw new UserError("You can only edit your own notes.");
     const d = noteSchema.parse({ title: form.get("title"), text: form.get("text") ?? undefined, subjectId: form.get("subjectId"), chapterId: form.get("chapterId") ?? undefined, lessonDate: form.get("lessonDate") });
     // Editing can add pages, so it needs the same permission as uploading. (Deleting your own note never does.)
     requireUploadRight(access);
@@ -111,7 +113,8 @@ export async function updateNote(noteId: string, form: FormData) {
     }
     const removed = existing.filter((i) => removeIds.includes(i.id));
     const removedAttachments = existingAttachments.filter((a) => removeAttachmentIds.includes(a.id));
-    const resubmit = access.role !== "TEACHER";
+    // A classroom student's edit goes back for review. In a room an edit keeps the status (a hidden note stays hidden).
+    const resubmit = access.kind === "CLASS" && access.role !== "TEACHER";
     try {
       await db.$transaction([
         db.noteImage.deleteMany({ where: { id: { in: removed.map((r) => r.id) }, noteId } }),
@@ -139,7 +142,7 @@ export async function deleteNote(noteId: string) {
   const res = await run(async () => {
     const userId = await requireUserId();
     const { note, access } = await requireVisibleNote(userId, noteId);
-    if (!canEdit(note, access.role, userId)) throw new UserError("You can only delete your own notes.");
+    if (!canDelete(note, access, userId)) throw new UserError("You can only delete your own notes.");
     const [images, attachments] = await Promise.all([
       db.noteImage.findMany({ where: { noteId }, select: { filePath: true } }),
       db.noteAttachment.findMany({ where: { noteId }, select: { filePath: true } }),
@@ -158,9 +161,11 @@ export async function reviewNote(noteId: string, decision: "approve" | "reject",
     const userId = await requireUserId();
     const note = await db.note.findUnique({ where: { id: noteId }, include: { author: { select: { role: true, name: true } } } });
     if (!note) throw new UserError("Note not found.");
-    await requireTeacher(userId, note.classroomId);
+    const access = await requireMember(userId, note.classroomId);
+    if (!canManageNotes(access)) throw new UserError(access.kind === "CLASS" ? "Only the class teacher can do that." : "You can't moderate notes here.");
     if (decision === "approve") {
-      if (note.author.role === "STUDENT") {
+      // Classroom only: there, sharing a student's notes needs their signed consent form.
+      if (access.kind === "CLASS" && note.author.role === "STUDENT") {
         const m = await db.membership.findUnique({ where: { classroomId_userId: { classroomId: note.classroomId, userId: note.authorId } } });
         if (!m) throw new UserError(`${note.author.name} is no longer in this class.`);
         if (!m.consentVerifiedAt) throw new UserError(`Confirm ${note.author.name}'s signed consent form (in the Students list) before sharing their notes with the class.`);
@@ -192,17 +197,24 @@ export async function deleteComment(commentId: string) {
     const userId = await requireUserId();
     const c = await db.comment.findUnique({ where: { id: commentId }, include: { note: { select: { classroomId: true } } } });
     if (!c) throw new UserError("Comment not found.");
-    const { role } = await requireMember(userId, c.note.classroomId);
-    if (c.authorId !== userId && role !== "TEACHER") throw new UserError("You can only delete your own comments.");
+    const access = await requireMember(userId, c.note.classroomId);
+    if (c.authorId !== userId && !canManageNotes(access)) throw new UserError("You can only delete your own comments.");
     await db.comment.delete({ where: { id: commentId } });
     done();
   });
 }
 
+/** Who can fix a note's page text: a classroom's teachers; elsewhere the note's author or a moderator. */
+async function requireNoteManager(userId: string, note: { classroomId: string; authorId: string }) {
+  const access = await requireMember(userId, note.classroomId);
+  const ok = access.kind === "CLASS" ? access.role === "TEACHER" : note.authorId === userId || can(access, "moderate");
+  if (!ok) throw new UserError(access.kind === "CLASS" ? "Only the class teacher can do that." : "Only the note's author can do that.");
+}
+
 async function teacherOfImage(userId: string, imageId: string) {
-  const img = await db.noteImage.findUnique({ where: { id: imageId }, include: { note: { select: { id: true, classroomId: true, status: true } } } });
+  const img = await db.noteImage.findUnique({ where: { id: imageId }, include: { note: { select: { id: true, classroomId: true, status: true, authorId: true } } } });
   if (!img) throw new UserError("Page not found.");
-  await requireTeacher(userId, img.note.classroomId);
+  await requireNoteManager(userId, img.note);
   return img;
 }
 
@@ -228,9 +240,9 @@ export async function saveTranscript(imageId: string, text: string) {
 export async function readNoteAgain(noteId: string, onlyMissing = false) {
   return run(async () => {
     const userId = await requireUserId();
-    const note = await db.note.findUnique({ where: { id: noteId }, select: { classroomId: true, status: true } });
+    const note = await db.note.findUnique({ where: { id: noteId }, select: { classroomId: true, status: true, authorId: true } });
     if (!note) throw new UserError("Note not found.");
-    await requireTeacher(userId, note.classroomId);
+    await requireNoteManager(userId, note);
     if (note.status !== "APPROVED") throw new UserError("Approve the note first. Only approved pages are sent to the AI.");
     if (!aiEnabled()) throw new UserError("AI reading is switched off (no OpenAI API key configured).");
     const n = await queueNote(noteId, { force: !onlyMissing });

@@ -6,7 +6,7 @@ import { awardQuietly } from "@/lib/game-server";
 import { CONFIDENCES, type Confidence } from "@/lib/confidence";
 import OpenAI from "openai";
 import { z } from "zod";
-import { requireMember, requireTeacher } from "@/lib/access";
+import { requireMember, requirePower } from "@/lib/access";
 import { gradeAnswers, generateStudyMaterial } from "@/lib/ai-study";
 import { run, UserError } from "@/lib/action";
 import { requireUserId } from "@/lib/auth";
@@ -46,7 +46,7 @@ async function checkPattern(classroomId: string, patternId: string | null) {
 export async function createAssessment(classroomId: string, input: unknown) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireTeacher(userId, classroomId);
+    await requirePower(userId, classroomId, "study");
     const d = assessmentSchema.parse(input);
     if (d.date < (await getToday())) throw new UserError("Choose today or a future date.");
     if ((await db.assessment.count({ where: { classroomId } })) >= 300) throw new UserError("A class can have up to 300 dates. Delete old ones first.");
@@ -65,7 +65,7 @@ export async function updateAssessment(id: string, input: unknown) {
     const userId = await requireUserId();
     const current = await db.assessment.findUnique({ where: { id } });
     if (!current) throw new UserError("That date no longer exists.");
-    await requireTeacher(userId, current.classroomId);
+    await requirePower(userId, current.classroomId, "study");
     const d = assessmentSchema.parse(input);
     // Old dates can stay as they are; moving one must land today or later.
     if (keyToDate(d.date).getTime() !== current.date.getTime() && d.date < (await getToday())) throw new UserError("Choose today or a future date.");
@@ -87,7 +87,7 @@ export async function deleteAssessment(id: string) {
     const userId = await requireUserId();
     const current = await db.assessment.findUnique({ where: { id }, select: { classroomId: true } });
     if (!current) throw new UserError("That date no longer exists.");
-    await requireTeacher(userId, current.classroomId);
+    await requirePower(userId, current.classroomId, "study");
     await db.assessment.delete({ where: { id } });
     done();
   });
@@ -132,7 +132,7 @@ export async function generateNoteMaterial(noteId: string, kind: "flashcards" | 
       },
     });
     if (!note) throw new UserError("Note not found.");
-    await requireTeacher(userId, note.classroomId);
+    await requirePower(userId, note.classroomId, "study");
     if (note.status !== "APPROVED") throw new UserError("Only approved notes can be used for study material.");
     if (!note.chapterId) throw new UserError("File this note under a chapter first, so its cards and questions belong to a chapter.");
     if (!aiEnabled()) throw new UserError("AI is off, so nothing was generated. You can add items by hand.");
@@ -182,7 +182,7 @@ export async function approveDrafts(chapterId: string, kind: "flashcards" | "que
   return run(async () => {
     const userId = await requireUserId();
     const ctx = await chapterContext(chapterId);
-    await requireTeacher(userId, ctx.classroomId);
+    await requirePower(userId, ctx.classroomId, "study");
     const r = materialKind.parse(kind) === "flashcards"
       ? await db.flashcard.updateMany({ where: { chapterId, status: "DRAFT" }, data: { status: "APPROVED" } })
       : await db.question.updateMany({ where: { chapterId, status: "DRAFT" }, data: { status: "APPROVED" } });
@@ -205,7 +205,7 @@ export async function deleteStudyItem(kind: string, id: string) {
   return run(async () => {
     const userId = await requireUserId();
     const k = kindSchema.parse(kind);
-    await requireTeacher(userId, (await itemChapter(k, id)).classroomId);
+    await requirePower(userId, (await itemChapter(k, id)).classroomId, "study");
     if (k === "flashcard") await db.flashcard.delete({ where: { id } });
     else await db.question.delete({ where: { id } });
     done();
@@ -216,7 +216,7 @@ export async function approveStudyItem(kind: string, id: string) {
   return run(async () => {
     const userId = await requireUserId();
     const k = kindSchema.parse(kind);
-    await requireTeacher(userId, (await itemChapter(k, id)).classroomId);
+    await requirePower(userId, (await itemChapter(k, id)).classroomId, "study");
     if (k === "flashcard") await db.flashcard.update({ where: { id }, data: { status: "APPROVED" } });
     else await db.question.update({ where: { id }, data: { status: "APPROVED" } });
     done();
@@ -236,7 +236,7 @@ export async function saveFlashcard(chapterId: string, id: string | null, noteId
   return run(async () => {
     const userId = await requireUserId();
     const ctx = await chapterContext(chapterId);
-    await requireTeacher(userId, ctx.classroomId);
+    await requirePower(userId, ctx.classroomId, "study");
     const d = flashcardSchema.parse(input);
     const note = await checkNote(chapterId, noteId);
     if (id) {
@@ -253,7 +253,7 @@ export async function saveQuestion(chapterId: string, id: string | null, noteId:
   return run(async () => {
     const userId = await requireUserId();
     const ctx = await chapterContext(chapterId);
-    await requireTeacher(userId, ctx.classroomId);
+    await requirePower(userId, ctx.classroomId, "study");
     const d = questionSchema.parse(input);
     const note = await checkNote(chapterId, noteId);
     const data = { question: d.question, answer: d.answer, keyPoints: JSON.stringify(d.keyPoints), noteId: note, status: "APPROVED", source: "TEACHER" };
@@ -277,10 +277,10 @@ const DAILY_GRADE_LIMIT = Number(process.env.AI_DAILY_GRADE_LIMIT || 2000);
 
 /**
  * A student's written answers are sent to the AI to be marked, so (like uploading notes) it needs the
- * teacher to have confirmed the parent/guardian consent form. Teachers can always try quizzes.
+ * teacher to have confirmed the parent/guardian consent form. Teachers (and supervisors) can always try quizzes.
  */
 function requireMarkingConsent(access: { role: string; membership: { consentVerifiedAt: Date | null } | null }) {
-  if (access.role === "TEACHER") return;
+  if (access.role !== "STUDENT") return;
   if (!access.membership?.consentVerifiedAt)
     throw new UserError("Your teacher needs to confirm your parent/guardian consent form before the AI can check your written answers. Ask your teacher.");
 }

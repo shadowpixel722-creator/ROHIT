@@ -13,7 +13,7 @@ import { requireUser } from "@/lib/auth";
 import { subjectColor } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { imageSrc } from "@/lib/note-queries";
-import { canEdit, canUpload, getVisibleNote } from "@/lib/notes";
+import { canDelete, canEdit, canManageNotes, canUpload, getVisibleNote } from "@/lib/notes";
 import { aiEnabled } from "@/lib/transcribe";
 import { PageTexts } from "@/components/notes/page-texts";
 import { FormattedText } from "@/components/notes/formatted-text";
@@ -37,8 +37,12 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
       comments: { orderBy: { createdAt: "asc" }, include: { author: { select: { name: true, role: true } } } },
     },
   });
-  const teacher = access.role === "TEACHER";
-  const editable = canEdit(note, access.role, user.id);
+  const room = access.kind !== "CLASS";
+  // Reviews (classroom) or hides (student room) notes. Fixing page text: that person, or a note's author outside a classroom.
+  const teacher = canManageNotes(access);
+  const managePages = teacher || (room && note.authorId === user.id);
+  const editable = canEdit(note, access, user.id);
+  const deletable = canDelete(note, access, user.id);
   const date = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: note.lessonDate ? "UTC" : undefined }).format(note.lessonDate ?? note.createdAt);
 
   return (
@@ -55,9 +59,9 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
           </p>
           {note.status !== "APPROVED" && <div className="mt-2"><StatusBadge status={note.status} /></div>}
         </div>
-        {editable && (
+        {deletable && (
           <div className="flex shrink-0 gap-1">
-            {canUpload(access) && <ButtonLink href={`/classes/${id}/notebook/${noteId}/edit`} variant="secondary"><Pencil className="size-4" /> Edit</ButtonLink>}
+            {editable && canUpload(access) && <ButtonLink href={`/classes/${id}/notebook/${noteId}/edit`} variant="secondary"><Pencil className="size-4" /> Edit</ButtonLink>}
             <DeleteNote noteId={noteId} />
           </div>
         )}
@@ -65,21 +69,21 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
 
       {note.status === "REJECTED" && note.rejectReason && (
         <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">
-          <span className="font-medium">Teacher&apos;s feedback:</span> {note.rejectReason}
-          {note.authorId === user.id && " Edit the note to fix it, and it will be sent for approval again."}
+          <span className="font-medium">{room ? "Hidden from the room:" : "Teacher\u2019s feedback:"}</span> {note.rejectReason}
+          {note.authorId === user.id && (room ? " Only you and the room's moderators can see it. Fix it, then ask the student head to show it again." : " Edit the note to fix it, and it will be sent for approval again.")}
         </div>
       )}
       {note.status === "PENDING" && !teacher && <div className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">Only you and your teacher can see this note until it&apos;s approved.</div>}
       {teacher && note.status !== "APPROVED" && (
         <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted">{note.status === "PENDING" ? "Check the pages for accuracy and personal details, then approve or ask for changes." : "You asked for changes on this note."}</p>
-          <ReviewActions noteId={noteId} status={note.status} />
+          <p className="text-sm text-muted">{room ? "This note is hidden from the room." : note.status === "PENDING" ? "Check the pages for accuracy and personal details, then approve or ask for changes." : "You asked for changes on this note."}</p>
+          <ReviewActions noteId={noteId} status={note.status} room={room} />
         </Card>
       )}
 
       {note.images.length > 0 && <Gallery title={note.title} images={note.images.map((i) => ({ id: i.id, src: imageSrc(i), width: i.width, height: i.height }))} />}
-      {note.images.length > 0 && (teacher ? note.status === "APPROVED" : true) && (
-        <PageTexts noteId={noteId} title={note.title} teacher={teacher} aiOn={aiEnabled()} approved={note.status === "APPROVED"}
+      {note.images.length > 0 && (teacher && !room ? note.status === "APPROVED" : true) && (
+        <PageTexts noteId={noteId} title={note.title} teacher={managePages} aiOn={aiEnabled()} approved={note.status === "APPROVED"}
           pages={note.images.map((i) => ({ id: i.id, src: imageSrc(i), width: i.width, height: i.height, transcript: i.transcript, status: i.transcriptStatus, source: i.transcriptSource, error: i.transcriptError, convert: i.convert }))} />
       )}
       {note.text && (
@@ -111,7 +115,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
 
       {note.status === "APPROVED" && (
         <Collapsible title={`Discussion (${note.comments.length})`} meta={note.comments.length ? undefined : "Ask a question about this note"} defaultOpen>
-          {teacher && <div className="mb-3 flex justify-end"><ReviewActions noteId={noteId} status={note.status} compact /></div>}
+          {teacher && <div className="mb-3 flex justify-end"><ReviewActions noteId={noteId} status={note.status} compact room={room} /></div>}
           <div>
             <Comments noteId={noteId} canModerate={teacher} comments={note.comments.map((c) => ({
               id: c.id, body: c.body, authorName: c.author.name, authorIsTeacher: c.author.role === "TEACHER", mine: c.authorId === user.id, createdAt: c.createdAt.toISOString(),

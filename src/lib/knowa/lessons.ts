@@ -307,6 +307,52 @@ export function lessonForChapter(chapterName: string, grade: string | null): Les
   return !grade || !Number.isFinite(g) || lesson.classes.includes(g) ? lesson : null;
 }
 
+/**
+ * Words that point to each lesson: [strong, weak]. A strong word names the lesson's idea on its own
+ * ("hypotenuse"); a weak one only helps ("volume", "nucleus" fits both the atom and the cell).
+ * Matched as whole words or phrases, plural "s" allowed.
+ */
+const LESSON_WORDS: Record<string, [string[], string[]]> = {
+  mensuration: [["cone", "sphere", "cylinder", "hemisphere", "frustum", "recast", "recasting"], ["volume", "surface area", "melted", "curved surface", "radius"]],
+  pythag: [["pythagoras", "pythagorean", "hypotenuse", "baudhayana"], ["right angled", "right angle", "right triangle", "triangle"]],
+  solids: [["euler", "polyhedron", "polyhedra"], ["vertex", "vertices", "edge", "face", "prism", "pyramid", "cube", "cuboid", "solid shape"]],
+  atom: [["atom", "atomic", "electron", "proton", "neutron", "bohr", "valency", "electronic configuration", "atomic number"], ["nucleus", "shell", "orbit", "element"]],
+  cell: [["organelle", "mitochondria", "mitochondrion", "chloroplast", "cytoplasm", "cell membrane", "cell wall", "vacuole", "ribosome", "plant cell", "animal cell", "golgi"], ["cell", "nucleus", "membrane", "tissue"]],
+  molecule: [["covalent", "lone pair", "bond angle", "methane", "valence electron"], ["molecule", "bond", "carbon compound", "shared electron"]],
+  lens: [["lens", "lenses", "convex", "concave", "focal length", "ray diagram", "refraction", "magnification"], ["image", "focus", "mirror", "light ray"]],
+  seasons: [["season", "solstice", "equinox", "axial tilt"], ["tilt", "revolution", "summer", "winter", "hemisphere"]],
+  quad: [["quadratic", "parabola", "factorise", "factorize", "factorising", "factorizing", "discriminant"], ["root", "equation", "factor"]],
+  binary: [["binary", "base 2", "ascii", "bit", "byte"], ["place value", "decimal", "computer count"]],
+  pyfor: [["for loop", "python"], ["loop", "range", "iteration", "repeat"]],
+  voice: [["passive voice", "active voice", "passive"], ["voice", "active", "grammar"]],
+};
+
+/** For each lesson, how many of its strong and weak words a piece of text contains. */
+function lessonHits(text: string) {
+  const t = ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  const has = (w: string) => t.includes(` ${w} `) || t.includes(` ${w}s `) || t.includes(` ${w}es `);
+  return Object.fromEntries(Object.entries(LESSON_WORDS).map(([id, [strong, weak]]) => [id, { strong: strong.filter(has).length, weak: weak.filter(has).length }]));
+}
+
+/**
+ * The narrated 3D lesson that fits a question and its explanation, if one clearly does. A strong word
+ * scores 2 and a weak one 1; the question counts twice as much as the explanation. The winner needs a
+ * strong word, a score of at least 4 and a clear lead. Offered only for the class level it was written
+ * for (any level if `grade` isn't set).
+ */
+export function lessonForText(question: string, explanation: string, grade: string | null): Lesson | null {
+  const q = lessonHits(question), a = lessonHits(explanation);
+  const ranked = Object.keys(LESSON_WORDS).map((id) => ({
+    id, strong: q[id].strong + a[id].strong,
+    score: (q[id].strong * 2 + q[id].weak) * 2 + a[id].strong * 2 + a[id].weak,
+  })).sort((x, y) => y.score - x.score);
+  const [best, next] = ranked;
+  if (!best.strong || best.score < 4 || best.score === next.score) return null;
+  const lesson = LESSON_BY_ID[best.id];
+  const g = Number(grade);
+  return !grade || !Number.isFinite(g) || lesson.classes.includes(g) ? lesson : null;
+}
+
 /** Lessons offered to a class level (all of them if the level isn't set). */
 export function lessonsForGrade(grade: string | null) {
   const g = Number(grade);

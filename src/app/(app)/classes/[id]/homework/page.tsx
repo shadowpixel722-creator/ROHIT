@@ -14,7 +14,7 @@ export default async function HomeworkPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
-  if (!access) notFound();
+  if (!access || access.kind !== "CLASS") notFound(); // homework needs a teacher: classrooms only
   const teacher = access.role === "TEACHER";
   const [sheets, subjects, students] = await Promise.all([
     homeworkList(id, user.id, teacher),

@@ -20,7 +20,7 @@ export function JoinClass({ asTeacher = false }: { asTeacher?: boolean }) {
     setBusy(false);
     if (res.ok && res.data) {
       if (res.data.pending) {
-        toast(`Request sent. The teacher of ${res.data.name} needs to approve you.`);
+        toast(res.data.room ? `Request sent. The student head of ${res.data.name} needs to approve you.` : `Request sent. The teacher of ${res.data.name} needs to approve you.`);
         setCode("");
         router.refresh();
       } else {
@@ -31,11 +31,11 @@ export function JoinClass({ asTeacher = false }: { asTeacher?: boolean }) {
   }
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-      <Field label="Class code" htmlFor="code" hint={asTeacher ? "Ask the class's teacher for its code. They approve your request before you get access." : "Your teacher will give you a 6-character code, like ABC-DEF."} className="flex-1">
+      <Field label={asTeacher ? "Class code" : "Class code or room code"} htmlFor="code" hint={asTeacher ? "Ask the class's teacher or the room's student head for its code. They approve your request before you get access." : "A 6-character code, like ABC-DEF, from your teacher or a room's student head."} className="flex-1">
         <Input id="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={9} autoComplete="off" autoCapitalize="characters"
           placeholder="ABC-DEF" className="font-mono tracking-widest uppercase" required />
       </Field>
-      <Button type="submit" loading={busy} disabled={code.replace(/[\s-]/g, "").length < 6} className="sm:mb-5"><LogIn className="size-4" /> {asTeacher ? "Request to join" : "Join class"}</Button>
+      <Button type="submit" loading={busy} disabled={code.replace(/[\s-]/g, "").length < 6} className="sm:mb-5"><LogIn className="size-4" /> {asTeacher ? "Request to join" : "Join class or room"}</Button>
     </form>
   );
 }

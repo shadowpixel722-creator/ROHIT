@@ -21,9 +21,12 @@ export async function studentDashboard(userId: string, today: string, onlyClassI
   const memberships = await db.membership.findMany({
     where: { userId, status: "ACTIVE", role: "STUDENT", ...(onlyClassId ? { classroomId: onlyClassId } : {}) },
     orderBy: { joinedAt: "asc" },
-    select: { classroom: { select: { id: true, name: true } } },
+    select: { classroom: { select: { id: true, name: true, kind: true, _count: { select: { subjects: true } } } } },
   });
-  const classes = memberships.map((m) => m.classroom);
+  // A personal space nobody has set up yet doesn't count: the home page then offers ways to start learning.
+  const classes = memberships.map((m) => m.classroom)
+    .filter((c) => onlyClassId || c.kind !== "PERSONAL" || c._count.subjects > 0)
+    .map((c) => ({ id: c.id, name: c.name }));
   const classIds = classes.map((c) => c.id);
   const className = new Map(classes.map((c) => [c.id, c.name]));
 
@@ -74,7 +77,7 @@ export async function studentDashboard(userId: string, today: string, onlyClassI
 export async function teacherDashboard(userId: string, today: string, onlyClassId?: string) {
   const [owned, coTaught] = await Promise.all([
     db.classroom.findMany({ where: { teacherId: userId }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, grade: true } }),
-    db.membership.findMany({ where: { userId, role: "TEACHER", status: "ACTIVE" }, select: { classroom: { select: { id: true, name: true, grade: true } } } }),
+    db.membership.findMany({ where: { userId, role: "TEACHER", status: "ACTIVE", classroom: { kind: "CLASS" } }, select: { classroom: { select: { id: true, name: true, grade: true } } } }),
   ]);
   const classes = [...owned, ...coTaught.map((m) => m.classroom)].filter((c) => !onlyClassId || c.id === onlyClassId);
   const classIds = classes.map((c) => c.id);

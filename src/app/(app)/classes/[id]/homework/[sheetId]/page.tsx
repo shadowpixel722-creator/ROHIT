@@ -15,7 +15,7 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
   const { id, sheetId } = await params;
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
-  if (!access) notFound();
+  if (!access || access.kind !== "CLASS") notFound(); // homework needs a teacher: classrooms only
   const teacher = access.role === "TEACHER";
   const sheet = await db.homeworkSheet.findFirst({ where: { id: sheetId, classroomId: id, ...(teacher ? {} : { publishedAt: { not: null } }) }, include: { chapter: { select: { name: true } } } });
   if (!sheet) notFound();

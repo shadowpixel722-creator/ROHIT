@@ -8,6 +8,7 @@ import { answerMcq, generateStudentMcqs, startMcqPractice, type McqView } from "
 import type { Confidence } from "@/lib/confidence";
 import { ConfidencePicker, confidenceNote } from "./confidence-picker";
 import { useRunAction } from "../toast";
+import { HelpMeUnderstand } from "../understand";
 import { Badge, Button, cn } from "../ui";
 
 type Feedback = { correct: boolean; correctPosition: number; explanation: string; trap: { id: string; label: string; fix: string } | null; confidence: Confidence | null };
@@ -156,6 +157,9 @@ export function McqRunner({ classroomId, target, startLabel = "Start practice", 
           {(() => { const n = confidenceNote(fb.correct, fb.confidence); return n && <p className={cn("mt-2 text-xs font-medium", n.tone === "danger" ? "text-danger" : "text-warn")} data-testid="mcq-confidence-note">{n.text}</p>; })()}
         </div>
       )}
+      {/* Before answering it explains the question without giving the answer; after, why the answer is right. */}
+      <HelpMeUnderstand key={`${run.sessionId}-${run.index}-${fb ? "after" : "before"}`} target={{ kind: "mcq", sessionId: run.sessionId, position: run.index }}
+        label={fb ? "I still don't understand" : "I don't understand the question"} />
       {fb && <Button onClick={next}>{run.index + 1 < run.questions.length ? "Next question" : "See results"}</Button>}
     </div>
   );

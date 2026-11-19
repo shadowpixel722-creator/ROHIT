@@ -2,6 +2,7 @@
 
 import { setStudentQuestionCount } from "@/app/actions/mistakes";
 import { setAiTutor } from "@/app/actions/tutor";
+import { setLeaderboard } from "@/app/actions/game";
 
 import { Copy, LogOut, RefreshCw } from "lucide-react";
 import { useState } from "react";
@@ -46,7 +47,7 @@ export function JoinCodePanel({ classroomId, code, open }: { classroomId: string
   );
 }
 
-export function ClassDetailsForm({ classroomId, name, grade, hasIndexedSubjects }: { classroomId: string; name: string; grade: string | null; hasIndexedSubjects?: boolean }) {
+export function ClassDetailsForm({ classroomId, name, grade, hasIndexedSubjects, kind = "CLASS" }: { classroomId: string; name: string; grade: string | null; hasIndexedSubjects?: boolean; kind?: string }) {
   const runAction = useRunAction();
   const toast = useToast();
   const [v, setV] = useState({ name, grade: grade ?? "" });
@@ -62,10 +63,11 @@ export function ClassDetailsForm({ classroomId, name, grade, hasIndexedSubjects 
       setBusy(false);
       if (res.ok) {
         const c = res.data?.chapters;
-        toast(c && (c.added || c.removed) ? `Class updated. Chapters switched: ${c.added} added, ${c.removed} unused removed${c.kept ? `, ${c.kept} kept because they have notes` : ""}` : "Class updated");
+        const what = kind === "ROOM" ? "Room" : kind === "PERSONAL" ? "Space" : "Class";
+        toast(c && (c.added || c.removed) ? `${what} updated. Chapters switched: ${c.added} added, ${c.removed} unused removed${c.kept ? `, ${c.kept} kept because they have notes` : ""}` : `${what} updated`);
       }
     }}>
-      <Field label="Class name" htmlFor="ename"><Input id="ename" value={v.name} maxLength={80} onChange={(e) => setV({ ...v, name: e.target.value })} required /></Field>
+      <Field label={kind === "ROOM" ? "Room name" : kind === "PERSONAL" ? "Space name" : "Class name"} htmlFor="ename"><Input id="ename" value={v.name} maxLength={80} onChange={(e) => setV({ ...v, name: e.target.value })} required /></Field>
       <Field label="Class" htmlFor="egrade">
         <Select id="egrade" value={v.grade} onChange={(e) => setV({ ...v, grade: e.target.value })}>
           <option value="">Not set</option>
@@ -77,12 +79,12 @@ export function ClassDetailsForm({ classroomId, name, grade, hasIndexedSubjects 
   );
 }
 
-export function DeleteClass({ classroomId, name }: { classroomId: string; name: string }) {
+export function DeleteClass({ classroomId, name, room = false }: { classroomId: string; name: string; room?: boolean }) {
   const runAction = useRunAction();
   const [open, setOpen] = useState(false);
   const [confirmName, setConfirmName] = useState("");
   const [busy, setBusy] = useState(false);
-  if (!open) return <Button variant="danger" onClick={() => setOpen(true)}>Delete class</Button>;
+  if (!open) return <Button variant="danger" onClick={() => setOpen(true)}>{room ? "Delete room" : "Delete class"}</Button>;
   return (
     <form className="w-full space-y-3 rounded-xl bg-danger-soft p-4" onSubmit={async (e) => {
       e.preventDefault();
@@ -90,7 +92,7 @@ export function DeleteClass({ classroomId, name }: { classroomId: string; name: 
       const res = await runAction(deleteClass(classroomId, confirmName));
       if (res && !res.ok) setBusy(false);
     }}>
-      <Field label={`Type “${name}” to delete this class for everyone`} htmlFor="del-class"><Input id="del-class" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} autoComplete="off" /></Field>
+      <Field label={`Type “${name}” to delete this ${room ? "room" : "class"} for everyone`} htmlFor="del-class"><Input id="del-class" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} autoComplete="off" /></Field>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={() => { setOpen(false); setConfirmName(""); }}>Cancel</Button>
         <Button type="submit" variant="danger" loading={busy} disabled={confirmName.trim() !== name}>Delete permanently</Button>
@@ -114,7 +116,7 @@ export function LeaveClass({ classroomId, name }: { classroomId: string; name: s
 
 /** How many multiple-choice questions a student gets when they ask for new ones (0 = off). */
 /** Teacher: the AI tutor (Ask a doubt, photo questions, Teach Knowa) on or off for the class. */
-export function AiTutorSetting({ classroomId, on }: { classroomId: string; on: boolean }) {
+export function AiTutorSetting({ classroomId, on, kind = "CLASS" }: { classroomId: string; on: boolean; kind?: string }) {
   const runAction = useRunAction();
   const [value, setValue] = useState(on);
   return (
@@ -125,17 +127,36 @@ export function AiTutorSetting({ classroomId, on }: { classroomId: string; on: b
           const res = await runAction(setAiTutor(classroomId, n), n ? "AI tutor switched on" : "AI tutor switched off");
           if (!res.ok) setValue(!n);
         }} />
-      <span><span className="font-medium">AI tutor for students</span> <span className="text-muted">(Ask a doubt, photo questions, Teach Knowa; only students whose consent form you&apos;ve confirmed, answered from the class&apos;s approved notes, nothing saved)</span></span>
+      <span><span className="font-medium">{kind === "PERSONAL" ? "AI tutor" : "AI tutor for students"}</span> <span className="text-muted">{kind === "CLASS"
+        ? <>(Ask a doubt, photo questions, Teach Knowa; only students whose consent form you&apos;ve confirmed, answered from the class&apos;s approved notes, nothing saved)</>
+        : <>(Ask a doubt, photo questions, Teach Knowa; answered from the notes {kind === "ROOM" ? "in this room" : "in your space"}, nothing saved)</>}</span></span>
     </label>
   );
 }
 
-export function StudentQuestionSetting({ classroomId, count }: { classroomId: string; count: number }) {
+/** Teacher: whether this class's students are on (and see) the app-wide leaderboard. */
+export function LeaderboardSetting({ classroomId, on, kind = "CLASS" }: { classroomId: string; on: boolean; kind?: string }) {
+  const runAction = useRunAction();
+  const [value, setValue] = useState(on);
+  return (
+    <label className="flex flex-wrap items-center gap-2 text-sm">
+      <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={value} aria-label="Leaderboard for students"
+        onChange={async (e) => {
+          const n = e.target.checked; setValue(n);
+          const res = await runAction(setLeaderboard(classroomId, n), n ? "Leaderboard switched on" : "Leaderboard switched off");
+          if (!res.ok) setValue(!n);
+        }} />
+      <span><span className="font-medium">Leaderboard</span> <span className="text-muted">(one board for the whole app: XP, coins and perfect answers, with students&apos; names visible to every user. Off: {kind === "PERSONAL" ? "you're left off it and don't see it" : kind === "ROOM" ? "this room's members are left off it and don't see it" : "your students are left off it and don't see it"})</span></span>
+    </label>
+  );
+}
+
+export function StudentQuestionSetting({ classroomId, count, kind = "CLASS" }: { classroomId: string; count: number; kind?: string }) {
   const runAction = useRunAction();
   const [value, setValue] = useState(count);
   return (
     <label className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="font-medium">Students can make new practice questions</span>
+      <span className="font-medium">{kind === "PERSONAL" ? "New practice questions at a time" : kind === "ROOM" ? "Members can make new practice questions" : "Students can make new practice questions"}</span>
       <select value={value} aria-label="Students can make new practice questions" className="h-8 rounded-lg border border-border bg-surface px-2 text-sm"
         onChange={async (e) => {
           const n = Number(e.target.value);

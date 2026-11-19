@@ -48,7 +48,7 @@ export default async function NotebookPage({ params, searchParams }: { params: P
       )}
       {notes.length === 0 ? (
         <Card><EmptyState icon={<NotebookPen className="size-5" />} title={q ? `No notes match “${q}”` : "No approved notes here yet"}
-          description={q ? "Search covers titles, typed notes and the text read from page photos." : "Notes appear here once they are added and approved by the teacher."}
+          description={q ? "Search covers titles, typed notes and the text read from page photos." : access.kind === "CLASS" ? "Notes appear here once they are added and approved by the teacher." : "Notes appear here as soon as they are added."}
           action={allowed ? <ButtonLink href={`/classes/${id}/new`} variant="secondary">Add the first note</ButtonLink> : undefined} /></Card>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

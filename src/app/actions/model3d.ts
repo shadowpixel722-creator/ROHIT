@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import OpenAI from "openai";
-import { requireMember } from "@/lib/access";
+import { can, requireMember } from "@/lib/access";
 import { buildLessonModel } from "@/lib/ai-study";
 import { run, UserError } from "@/lib/action";
 import { requireUserId } from "@/lib/auth";
@@ -39,7 +39,7 @@ export async function makeLessonModel(noteId: string, mode: "auto" | "ai" | "lib
     if (!note) throw new UserError("Lesson not found.");
     const access = await requireMember(userId, note.classroomId);
     if (note.status !== "APPROVED") throw new UserError("Only approved notes can be shown in 3D.");
-    if (mode !== "auto" && access.role !== "TEACHER") throw new UserError("Only the teacher can remake a 3D model.");
+    if (mode !== "auto" && !can(access, "study")) throw new UserError("Only the teacher can remake a 3D model.");
 
     const text = lessonText(note);
     const hash = textHash(text);

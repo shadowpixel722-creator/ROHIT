@@ -3,15 +3,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JoinCodePanel } from "@/components/classes/class-settings";
 import { Roster } from "@/components/classes/roster";
+import { RoomMembers, Supervisors } from "@/components/classes/room-people";
 import { Teachers } from "@/components/classes/teachers";
 import { SubjectsEditor } from "@/components/classes/subjects-editor";
 import { Chevron, Collapsible, EmptyState, SubjectDot } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { subjectColor } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { NCERT_INDEX, ncertChapters } from "@/data/ncert-index";
 import { formatJoinCode } from "@/lib/join-code";
+import { parsePowers } from "@/lib/powers";
 import { getToday } from "@/lib/server";
 import { upcomingFor } from "@/lib/study";
 import { UpcomingCard, UrgentBanner } from "@/components/study/upcoming";
@@ -23,13 +25,20 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const { classroom, role, membership, isOwner } = access;
+  const { classroom, role, membership, isOwner, kind } = access;
   const teacher = role === "TEACHER";
+  const room = kind === "ROOM";
+  const editSyllabus = can(access, "syllabus");
+  const manageMembers = can(access, "members");
 
-  const [subjects, roster, counts] = await Promise.all([
+  const [subjects, roster, people, counts] = await Promise.all([
     db.subject.findMany({ where: { classroomId: id }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], include: { chapters: { orderBy: { position: "asc" }, select: { id: true, name: true, _count: { select: { notes: true, flashcards: true, questions: true } } } } } }),
     teacher
       ? db.membership.findMany({ where: { classroomId: id }, orderBy: { joinedAt: "asc" }, include: { user: { select: { name: true, email: true, guardianName: true, school: true } } } })
+      : Promise.resolve([]),
+    // A student room shows everyone's names only (no emails or guardians), to every member.
+    room
+      ? db.membership.findMany({ where: { classroomId: id }, orderBy: { joinedAt: "asc" }, select: { id: true, userId: true, role: true, status: true, powers: true, user: { select: { name: true, school: true } } } })
       : Promise.resolve([]),
     db.note.groupBy({ by: ["subjectId"], where: { classroomId: id, status: "APPROVED" }, _count: true }),
   ]);
@@ -46,6 +55,12 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   ] : [];
 
 
+  const members = people.filter((m) => m.role === "STUDENT").map((m) => ({ membershipId: m.id, name: m.user.name, head: m.userId === classroom.teacherId, me: m.userId === user.id }));
+  // Pending supervisor requests are only the head's business.
+  const supervisors = people.filter((m) => m.role === "TEACHER" && (isOwner || m.status === "ACTIVE"))
+    .map((m) => ({ membershipId: m.id, name: m.user.name, school: m.user.school, pending: m.status === "PENDING", powers: parsePowers(m.powers), me: m.userId === user.id }));
+  const supervisorRequests = supervisors.filter((s) => s.pending).length;
+
   const pendingConsent = students.filter((m) => !m.consentVerifiedAt).length;
   const teacherRequests = teacherRows.filter((t) => t.pending).length;
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -53,31 +68,37 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="space-y-3">
       {/* Test and exam reminders live only on the Overview tab (product owner). */}
-      {!teacher && await (async () => {
+      {role === "STUDENT" && await (async () => {
         const rows = await upcomingFor(user.id, id, await getToday());
         return <><UrgentBanner classroomId={id} rows={rows} /><UpcomingCard classroomId={id} rows={rows} /></>;
       })()}
 
-      {!teacher && !membership?.consentVerifiedAt && (
+      {kind === "CLASS" && !teacher && !membership?.consentVerifiedAt && (
         <div className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">Your teacher hasn&apos;t confirmed your parent/guardian consent form yet.</div>
       )}
 
-      {!teacher && (
+      {kind === "CLASS" && !teacher && (
         <p className="px-1 text-sm text-muted" data-testid="upload-status">
           {membership?.canUpload ? <><span className="font-medium text-primary">You can add notes.</span> Your teacher approves each one.</> : "Your teacher and the students they choose add the class notes."}
         </p>
       )}
 
-      {teacher && (
-        <Collapsible icon={<KeyRound className="size-5" />} title="Invite students" meta={<>Code <span className="font-mono">{formatJoinCode(classroom.joinCode)}</span>{!classroom.joinOpen && " · joining closed"}</>} defaultOpen={students.length === 0}>
-          <p className="mb-3 text-sm text-muted">Students sign up, then enter this code on their Classes page.</p>
+      {room && role === "STUDENT" && (
+        <p className="px-1 text-sm text-muted" data-testid="upload-status">
+          {isOwner ? "You're the student head. Notes members add appear straight away; you can hide any that shouldn't be here." : "Notes you add appear straight away for everyone in the room."}
+        </p>
+      )}
+
+      {manageMembers && (
+        <Collapsible icon={<KeyRound className="size-5" />} title={room ? "Invite classmates" : "Invite students"} meta={<>Code <span className="font-mono">{formatJoinCode(classroom.joinCode)}</span>{!classroom.joinOpen && " · joining closed"}</>} defaultOpen={teacher ? students.length === 0 : members.length <= 1}>
+          <p className="mb-3 text-sm text-muted">{room ? "Classmates sign up as students, then enter this code on their Classes page. A teacher who enters it asks to supervise the room." : "Students sign up, then enter this code on their Classes page."}</p>
           <JoinCodePanel classroomId={id} code={classroom.joinCode} open={classroom.joinOpen} />
         </Collapsible>
       )}
 
-      <Collapsible icon={<BookOpen className="size-5" />} title="Subjects and chapters" defaultOpen={teacher ? subjects.length === 0 : true}
+      <Collapsible icon={<BookOpen className="size-5" />} title="Subjects and chapters" defaultOpen={editSyllabus ? subjects.length === 0 : true}
         meta={subjects.length ? `${plural(subjects.length, "subject")} · ${plural(subjects.reduce((n, x) => n + x.chapters.length, 0), "chapter")}` : "None yet"} bodyClassName="px-4 sm:px-5">
-        {teacher ? (
+        {editSyllabus ? (
           <SubjectsEditor classroomId={id}
             grade={classroom.grade} indexSubjects={classroom.grade ? Object.keys(NCERT_INDEX[classroom.grade] ?? {}) : []}
             subjects={subjects.map((s) => {
@@ -85,7 +106,7 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
               return { id: s.id, name: s.name, color: s.color, indexSource: s.indexSource, ncertAvailable: index.size > 0, chapters: s.chapters.map((c) => ({ id: c.id, name: c.name, ncert: index.has(c.name.toLowerCase()), notes: c._count.notes, items: c._count.flashcards + c._count.questions })) };
             })} />
         ) : subjects.length === 0 ? (
-          <EmptyState title="No subjects yet" description="Your teacher hasn't added any yet." />
+          <EmptyState title="No subjects yet" description={room ? "The student head hasn't added any yet." : "Your teacher hasn't added any yet."} />
         ) : (
           <ul className="divide-y divide-border rounded-xl border border-border">
             {subjects.map((s) => (
@@ -125,8 +146,24 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
         </Collapsible>
       )}
 
+      {room && (
+        <Collapsible icon={<Users className="size-5" />} title="Members" meta={plural(members.length, "member")} data-testid="room-members">
+          <RoomMembers rows={members} canRemove={manageMembers} />
+        </Collapsible>
+      )}
+
+      {room && (
+        <Collapsible icon={<Users className="size-5" />} title="Supervising teachers" defaultOpen={isOwner && supervisorRequests > 0} data-testid="room-supervisors"
+          meta={`${plural(supervisors.length - supervisorRequests, "teacher")}${supervisorRequests ? ` · ${supervisorRequests} request${supervisorRequests === 1 ? "" : "s"}` : ""}`}>
+          <p className="mb-2 text-sm text-muted">{isOwner ? "Approve only teachers you know. They can look at everything in the room, and do only what you tick." : "The student head chooses what each teacher can do here."}</p>
+          <Supervisors rows={supervisors} canManage={isOwner} />
+        </Collapsible>
+      )}
+
       <Link href={`/settings#class-${id}`} className="flex items-center gap-2 px-1 text-sm font-medium text-primary hover:underline" data-testid="class-settings-link">
-        <Settings2 className="size-4" /> {teacher ? "Class settings (name, class, AI, delete) are in Settings →" : "Leave this class in Settings →"}
+        <Settings2 className="size-4" /> {can(access, "settings")
+          ? (kind === "CLASS" ? "Class settings (name, class, AI, delete) are in Settings →" : kind === "ROOM" ? "Room settings (name, class, AI, delete) are in Settings →" : "Your space's settings (name, class, AI) are in Settings →")
+          : kind === "CLASS" ? "Leave this class in Settings →" : "Leave this room in Settings →"}
       </Link>
     </div>
   );

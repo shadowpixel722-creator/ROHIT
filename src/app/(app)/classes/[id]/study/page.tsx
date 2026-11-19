@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ReadinessBadge } from "@/components/study/readiness-badge";
 import { Badge, Card, Collapsible, EmptyState, SubjectDot } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { subjectColor } from "@/lib/constants";
 import { db } from "@/lib/db";
@@ -18,7 +18,9 @@ export default async function StudyPage({ params }: { params: Promise<{ id: stri
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const teacher = access.role === "TEACHER";
+  // teacher: makes and checks study material. learner: practises with it. (In their own space a student is both.)
+  const teacher = can(access, "study");
+  const learner = access.role === "STUDENT";
 
   const subjects = await db.subject.findMany({
     where: { classroomId: id },
@@ -26,10 +28,10 @@ export default async function StudyPage({ params }: { params: Promise<{ id: stri
     select: { id: true, name: true, color: true, chapters: { orderBy: { position: "asc" }, select: { id: true, name: true } } },
   });
   const chapterIds = subjects.flatMap((s) => s.chapters.map((c) => c.id));
-  const [counts, percents] = await Promise.all([materialCounts(chapterIds), teacher ? Promise.resolve(new Map<string, number | null>()) : chapterPercents(user.id, chapterIds)]);
+  const [counts, percents] = await Promise.all([materialCounts(chapterIds), learner ? chapterPercents(user.id, chapterIds) : Promise.resolve(new Map<string, number | null>())]);
 
   if (subjects.length === 0) {
-    return <Card><EmptyState icon={<BookOpen className="size-5" />} title="No subjects yet" description={teacher ? "Add subjects and chapters on the Overview tab first." : "Your teacher hasn't added subjects yet."} /></Card>;
+    return <Card><EmptyState icon={<BookOpen className="size-5" />} title="No subjects yet" description={teacher ? "Add subjects and chapters on the Overview tab first." : (access.kind === "ROOM" ? "The student head hasn't added subjects yet." : "Your teacher hasn't added subjects yet.")} /></Card>;
   }
 
   return (
@@ -62,7 +64,7 @@ export default async function StudyPage({ params }: { params: Promise<{ id: stri
                     </span>
                   </span>
                   {teacher && drafts > 0 && <Badge tone="warn">{drafts} to check</Badge>}
-                  {!teacher && ready && <ReadinessBadge percent={percent} level={levelOf(percent)} />}
+                  {learner && ready && <ReadinessBadge percent={percent} level={levelOf(percent)} />}
                 </>
               );
               return (

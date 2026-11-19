@@ -2,7 +2,7 @@ import { SquareStack } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Card, Collapsible, EmptyState, SubjectDot } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { subjectColor } from "@/lib/constants";
 import { db } from "@/lib/db";
@@ -16,14 +16,14 @@ export default async function FlashcardsIndex({ params }: { params: Promise<{ id
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const teacher = access.role === "TEACHER";
+  const teacher = can(access, "study"); // makes and checks flashcards (a student does too, in their own space)
   const subjects = await db.subject.findMany({
     where: { classroomId: id }, orderBy: [{ position: "asc" }, { createdAt: "asc" }],
     select: { id: true, name: true, color: true, chapters: { orderBy: { position: "asc" }, select: { id: true, name: true } } },
   });
   const counts = await materialCounts(subjects.flatMap((s) => s.chapters.map((c) => c.id)));
   if (subjects.length === 0) {
-    return <Card><EmptyState icon={<SquareStack className="size-5" />} title="No subjects yet" description={teacher ? "Add subjects and chapters on the Overview tab first." : "Your teacher hasn't added subjects yet."} /></Card>;
+    return <Card><EmptyState icon={<SquareStack className="size-5" />} title="No subjects yet" description={teacher ? "Add subjects and chapters on the Overview tab first." : (access.kind === "ROOM" ? "The student head hasn't added subjects yet." : "Your teacher hasn't added subjects yet.")} /></Card>;
   }
   return (
     <div className="space-y-3">

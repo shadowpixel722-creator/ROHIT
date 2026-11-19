@@ -20,7 +20,7 @@ export default async function MyNotesPage({ params }: { params: Promise<{ id: st
       <Card>
         {canUpload(access) ? (
           <EmptyState icon={<NotebookPen className="size-5" />} title="You haven't added any notes yet"
-            description="Photograph your notebook pages or type your notes. Your teacher approves them before the class sees them."
+            description={access.kind === "CLASS" ? "Photograph your notebook pages or type your notes. Your teacher approves them before the class sees them." : "Photograph your notebook pages or type your notes. They appear here straight away."}
             action={<ButtonLink href={`/classes/${id}/new`}>Add a note</ButtonLink>} />
         ) : (
           <EmptyState icon={<NotebookPen className="size-5" />} title="You can't add notes yet"

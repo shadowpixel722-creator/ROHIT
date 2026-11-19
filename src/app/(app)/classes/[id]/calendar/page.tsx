@@ -5,7 +5,7 @@ import { AssessmentActions, AssessmentForm } from "@/components/calendar/assessm
 import { StudyPlan } from "@/components/calendar/study-plan";
 import { ReadinessBadge } from "@/components/study/readiness-badge";
 import { Badge, Card, CardHeader, cn, Collapsible, EmptyState } from "@/components/ui";
-import { getClassAccess } from "@/lib/access";
+import { can, getClassAccess } from "@/lib/access";
 import { countdown, isMonthKey, kindColor, kindLabel, monthGrid, shiftMonth } from "@/lib/assessments";
 import { requireUser } from "@/lib/auth";
 import { formatDate } from "@/lib/dates";
@@ -26,12 +26,14 @@ export default async function CalendarPage({ params, searchParams }: { params: P
   const user = await requireUser();
   const access = await getClassAccess(user.id, id);
   if (!access) notFound();
-  const teacher = access.role === "TEACHER";
+  // teacher: makes and checks study material. learner: practises with it. (In their own space a student is both.)
+  const teacher = can(access, "study");
+  const learner = access.role === "STUDENT";
   const today = await getToday();
   const month = isMonthKey(m) ? m : today.slice(0, 7);
 
   const [rows, subjects, patterns] = await Promise.all([
-    classAssessments(id, today, teacher ? undefined : user.id),
+    classAssessments(id, today, learner ? user.id : undefined),
     teacher ? db.subject.findMany({ where: { classroomId: id }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, name: true, chapters: { orderBy: { position: "asc" }, select: { id: true, name: true } } } }) : Promise.resolve([]),
     teacher ? db.examPattern.findMany({ where: { classroomId: id }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, lessons: { select: { chapterId: true } } } }) : Promise.resolve([]),
   ]);
@@ -41,7 +43,7 @@ export default async function CalendarPage({ params, searchParams }: { params: P
   const upcoming = rows.filter((r) => r.days >= 0);
   const past = rows.filter((r) => r.days < 0).reverse().slice(0, 10);
   // Students: a study plan for each test or exam in the next 60 days that covers chapters.
-  const planned = teacher ? [] : upcoming.filter((r) => r.days >= 0 && r.days <= 60 && r.kind !== "ASSIGNMENT" && r.chapters.length > 0);
+  const planned = !learner ? [] : upcoming.filter((r) => r.days >= 0 && r.days <= 60 && r.kind !== "ASSIGNMENT" && r.chapters.length > 0);
   const [made, ticks] = planned.length ? await Promise.all([
     db.assessment.findMany({ where: { id: { in: planned.map((r) => r.id) } }, select: { id: true, createdAt: true } }),
     db.planDone.findMany({ where: { userId: user.id, OR: planned.map((r) => ({ key: { startsWith: `${r.id}:` } })) }, select: { key: true } }),
@@ -64,14 +66,14 @@ export default async function CalendarPage({ params, searchParams }: { params: P
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2 font-medium">
             {r.title} <Badge>{kindLabel(r.kind)}</Badge>
-            {!teacher && r.days >= 0 && <ReadinessBadge percent={r.percent} level={r.level} />}
+            {learner && r.days >= 0 && <ReadinessBadge percent={r.percent} level={r.level} />}
           </p>
           <p className="mt-0.5 text-sm text-muted">
             {formatDate(r.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · <span className={cn(r.days >= 0 && r.days <= 3 && "font-medium text-warn")}>{countdown(r.days)}</span> · {r.subjectName}
           </p>
           <p className="mt-1 text-sm text-muted">
             {r.chapters.map((c, i) => (
-              <span key={c.id}>{i > 0 && ", "}<Link href={`/classes/${id}/study/${c.id}`} className="hover:text-text hover:underline">{c.name}</Link>{!teacher && c.percent !== null && <span className="text-faint"> ({c.percent}%)</span>}</span>
+              <span key={c.id}>{i > 0 && ", "}<Link href={`/classes/${id}/study/${c.id}`} className="hover:text-text hover:underline">{c.name}</Link>{learner && c.percent !== null && <span className="text-faint"> ({c.percent}%)</span>}</span>
             ))}
           </p>
           {r.pattern && (
@@ -137,7 +139,7 @@ export default async function CalendarPage({ params, searchParams }: { params: P
         <CardHeader title="Coming up" />
         <div className="px-5 pb-4">
           {upcoming.length === 0 ? (
-            <EmptyState title="Nothing scheduled" description={teacher ? "Add a test, assignment or exam above." : "Your teacher hasn't added any dates yet."} />
+            <EmptyState title="Nothing scheduled" description={teacher ? "Add a test, assignment or exam above." : (access.kind === "ROOM" ? "Nobody has added any dates yet." : "Your teacher hasn't added any dates yet.")} />
           ) : <ul className="divide-y divide-border" data-testid="upcoming-list">{upcoming.map(item)}</ul>}
         </div>
       </Card>

@@ -12,6 +12,7 @@ import { buildExplainPrompt, parseExplanation } from "./explain-schema";
 import { buildModelPrompt, MODEL3D_JSON_SCHEMA, parseScene } from "./model3d-schema";
 import { buildMarkPrompt, buildSheetPrompt, MARKS_SCHEMA, parseMarks, parseSheet, SHEET_SCHEMA, type HwQuestion } from "./homework";
 import { ASK_SCHEMA, buildAskPrompt, buildTeachPrompt, parseAsk, parseTeach, TEACH_SCHEMA, type NoteSnippet } from "./tutor";
+import { buildUnderstandPrompt, parseUnderstand, UNDERSTAND_SCHEMA, type UnderstandItem } from "./understand";
 import { buildPatternPrompt, parsePatternOutput, PRESETS } from "./exam-schema";
 import { buildGradePrompt, buildStudyPrompt, buildVerifyPrompt, parseGradeOutput, parseStudyOutput, StudyOutputError, type GradeItem } from "./study-schema";
 
@@ -341,6 +342,19 @@ export async function teachBack(req: { grade: string | null; topic: string; expl
     return { reply: parseTeach(JSON.stringify({ stars: long ? 4 : 2, say: long ? "I think I get it now! You explained the main idea clearly." : "Thanks! I understood a little, but I need more.", got: long ? ["You gave the main idea"] : [], missing: [{ gap: "An everyday example", fix: "Add an example from daily life to make it clear." }], question: "Can you give me an example?" })), inputTokens: 0, outputTokens: 0 };
   }
   const out = await ask(instructions, input, "teach_feedback", TEACH_SCHEMA, (raw) => ({ reply: parseTeach(raw) }), 1500);
+  return { reply: out.reply, inputTokens: out.inputTokens, outputTokens: out.outputTokens };
+}
+
+/** "I don't understand": a simpler explanation of a question, an explanation, a 3D model or a lesson step (see understand.ts). */
+export async function explainSimply(req: { grade: string | null; subject: string | null; item: UnderstandItem; notes: NoteSnippet[] }) {
+  const { instructions, input } = buildUnderstandPrompt(req);
+  if (provider() === "fake") {
+    const explanation = req.item.answered && req.item.answer
+      ? `In simple words: ${req.item.title}. The right answer is ${req.item.answer}, because it matches your notes.`
+      : `In simple words: this is asking about ${req.item.title}. Read it slowly and think about what your notes say first.`;
+    return { reply: parseUnderstand(JSON.stringify({ explanation, words: [{ word: "simple", meaning: "easy to understand" }] })), inputTokens: 0, outputTokens: 0 };
+  }
+  const out = await ask(instructions, input, "simpler_explanation", UNDERSTAND_SCHEMA, (raw) => ({ reply: parseUnderstand(raw) }), 1200);
   return { reply: out.reply, inputTokens: out.inputTokens, outputTokens: out.outputTokens };
 }
 

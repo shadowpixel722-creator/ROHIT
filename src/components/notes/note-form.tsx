@@ -39,10 +39,12 @@ async function shrink(file: File): Promise<File> {
   }
 }
 
-export function NoteForm({ classroomId, subjects, teacher, note, defaultSubjectId }: {
+/** `room`: a student room or personal space, where notes appear straight away (no teacher review). */
+export function NoteForm({ classroomId, subjects, teacher, room = false, note, defaultSubjectId }: {
   classroomId: string;
   subjects: FormSubject[];
   teacher: boolean;
+  room?: boolean;
   note?: { id: string; title: string; text: string; subjectId: string; chapterId: string; lessonDate: string; images: Existing[]; attachments?: ExistingFile[]; status: string };
   defaultSubjectId?: string;
 }) {
@@ -145,7 +147,7 @@ export function NoteForm({ classroomId, subjects, teacher, note, defaultSubjectI
   }
 
   if (subjects.length === 0)
-    return <Alert tone="warn">{teacher ? "Add subjects on the Overview tab first, so notes can be filed under them." : "Your teacher hasn't allowed you to add notes yet. You can still read and discuss every approved note."}</Alert>;
+    return <Alert tone="warn">{teacher || room ? "Add subjects on the Overview tab first, so notes can be filed under them." : "Your teacher hasn't allowed you to add notes yet. You can still read and discuss every approved note."}</Alert>;
 
   return (
     <form onSubmit={submit} className="space-y-4">
@@ -163,7 +165,7 @@ export function NoteForm({ classroomId, subjects, teacher, note, defaultSubjectI
       })()}
       {!teacher && (
         <Alert tone="neutral">
-          {note?.status === "APPROVED" ? "Editing an approved note sends it back to your teacher for approval." : "Your teacher reviews every note before the class can see it."}{" "}
+          {room ? "Your note appears straight away for everyone here." : note?.status === "APPROVED" ? "Editing an approved note sends it back to your teacher for approval." : "Your teacher reviews every note before the class can see it."}{" "}
           Don&apos;t include faces, names, phone numbers or other personal details in photos.
         </Alert>
       )}
@@ -300,7 +302,7 @@ export function NoteForm({ classroomId, subjects, teacher, note, defaultSubjectI
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={() => router.back()}>Cancel</Button>
         <Button type="submit" loading={busy} disabled={processing || !title.trim() || !lessonDate || (total === 0 && attachmentCount === 0 && !text.trim())}>
-          {note ? (teacher ? "Save changes" : "Save and resubmit") : teacher ? "Add to notebook" : "Send for approval"}
+          {note ? (teacher || room ? "Save changes" : "Save and resubmit") : teacher || room ? "Add to notebook" : "Send for approval"}
         </Button>
       </div>
     </form>

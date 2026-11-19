@@ -62,6 +62,13 @@ model Classroom {
   studentQuestionCount Int           @default(5)
   /// The AI tutor (Ask a doubt, photo questions, Teach Knowa) for consent-confirmed students. The teacher can switch it off.
   aiTutor              Boolean              @default(true)
+  /// Students of this class appear on (and see) the app-wide leaderboard. The teacher can switch it off.
+  leaderboard          Boolean              @default(true)
+  /// CLASS (made by a teacher) | ROOM (a student room, made by a student: its "student head") | PERSONAL (one student's own space)
+  kind                 String        @default("CLASS")
+  /// Set only on a PERSONAL space: the student it belongs to (unique, so each student has one)
+  personalOf           String?       @unique
+  /// The creator: the teacher of a CLASS, the student head of a ROOM, the owner of a PERSONAL space
   teacherId            String
   createdAt            DateTime      @default(now())
   teacher              User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
@@ -88,6 +95,8 @@ model Membership {
   consentVerifiedAt DateTime?
   /// Teacher-approved to upload notes (any subject). Requires confirmed consent.
   canUpload         Boolean   @default(false)
+  /// Student rooms only: what the student head lets this supervising teacher do (comma-separated: syllabus,members,moderate)
+  powers            String    @default("")
   classroom         Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 

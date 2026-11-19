@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireMember } from "@/lib/access";
+import { requireMember, requirePower } from "@/lib/access";
 import { run, UserError } from "@/lib/action";
 import { requireUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -66,12 +66,30 @@ export async function equipItem(cat: string, id: string) {
 /* ------------------------------------------------------------------ lessons */
 
 /** A narrated 3D lesson was watched to the end: XP once per lesson per day. */
-export async function lessonFinished(classroomId: string, lessonId: string) {
+/**
+ * A narrated lesson was played to the end. In a class, either a 3D lesson or a class note read aloud
+ * (`note-…`); outside a class (the Lessons page, for anyone, with or without a class) only the fixed 3D
+ * lessons. Rewards are once per lesson per day, so replaying can't farm them.
+ */
+export async function lessonFinished(classroomId: string | null, lessonId: string) {
   return run(async () => {
     const userId = await requireUserId();
-    await requireMember(userId, classroomId);
-    if (!LESSON_BY_ID[lessonId] && !lessonId.startsWith("note-")) throw new UserError("Lesson not found.");
+    if (classroomId) await requireMember(userId, classroomId);
+    if (!LESSON_BY_ID[lessonId] && !(classroomId && lessonId.startsWith("note-"))) throw new UserError("Lesson not found.");
     return award(userId, { xp: XP.lessonDone, once: `lesson:${lessonId}:${await getToday()}` });
+  });
+}
+
+/* ------------------------------------------------------------------ leaderboard */
+
+/** Teacher: put this class's students on the app-wide leaderboard, or take them off it (they then don't see it either). */
+export async function setLeaderboard(classroomId: string, on: boolean) {
+  return run(async () => {
+    const userId = await requireUserId();
+    await requirePower(userId, classroomId, "settings");
+    await db.classroom.update({ where: { id: classroomId }, data: { leaderboard: z.boolean().parse(on) } });
+    revalidatePath("/", "layout");
+    return { on };
   });
 }
 
@@ -94,7 +112,7 @@ async function bossPool(chapterId: string, written: boolean) {
   ];
 }
 /** Written questions need the AI marker, so only for students whose consent form is confirmed (and teachers). */
-const canWrite = (access: { role: string; membership: { consentVerifiedAt: Date | null } | null }) => aiEnabled() && (access.role === "TEACHER" || !!access.membership?.consentVerifiedAt);
+const canWrite = (access: { role: string; membership: { consentVerifiedAt: Date | null } | null }) => aiEnabled() && (access.role !== "STUDENT" || !!access.membership?.consentVerifiedAt);
 const allQuestions = (chapterId: string) => Promise.all([db.mcqQuestion.count({ where: { chapterId, status: "APPROVED" } }), db.question.count({ where: { chapterId, status: "APPROVED" } })]).then(([a, b]) => a + b);
 
 /** Starts a battle (or a raid turn set) against a chapter's boss. Questions come only from the class's approved questions. */

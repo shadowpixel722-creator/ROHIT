@@ -1,13 +1,27 @@
 "use client";
 
-import { Camera, GraduationCap, MessageCircleQuestion, Send, ShieldCheck, Sparkles, Star, X } from "lucide-react";
+import { ArrowRight, Box, Camera, GraduationCap, MessageCircleQuestion, Send, ShieldCheck, Sparkles, Star, X } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { askDoubt, teachKnowa } from "@/app/actions/tutor";
 import { MAX_DOUBT, MAX_EXPLANATION, type TeachReply } from "@/lib/tutor";
 import { ReadAloud, VoiceInput } from "./speech";
 import { Alert, Button, Card, cn, Input, Textarea } from "./ui";
 
-type Msg = { who: "you" | "tutor"; text: string; photo?: string; notes?: { title: string; chapter: string }[]; fromNotes?: boolean };
+type LessonLink = { id: string; title: string } | null;
+type Msg = { who: "you" | "tutor"; text: string; photo?: string; notes?: { title: string; chapter: string }[]; fromNotes?: boolean; lesson?: LessonLink };
+
+/** "See it in 3D": the narrated lesson that fits what the tutor just explained. */
+function LessonLinkCard({ classroomId, lesson }: { classroomId: string; lesson: NonNullable<LessonLink> }) {
+  return (
+    <Link href={`/classes/${classroomId}/explain/lesson/${lesson.id}`} data-testid="tutor-3d-lesson"
+      className="mt-2 flex items-center gap-2.5 rounded-xl border border-primary/30 bg-surface px-3 py-2 text-text hover:border-primary/60">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#0d1530] text-[#9db3ff]"><Box className="size-4" aria-hidden /></span>
+      <span className="min-w-0 flex-1"><span className="block text-xs text-muted">See it in 3D</span><span className="block truncate text-sm font-medium">{lesson.title}</span></span>
+      <ArrowRight className="size-4 shrink-0 text-primary" aria-hidden />
+    </Link>
+  );
+}
 
 /** Downscales a photo in the browser (max 1280 px) and re-encodes it as JPEG (which also drops its metadata). */
 async function prepPhoto(file: File): Promise<string> {
@@ -62,7 +76,7 @@ function Ask({ classroomId }: { classroomId: string }) {
     const res = await askDoubt(classroomId, { question, photo: pic }).catch(() => ({ ok: false as const, error: "Couldn't reach the server. Check your connection." }));
     setBusy(false);
     if (!res.ok) { setError(res.error); return; }
-    setMsgs((m) => [...m, { who: "tutor", text: res.data!.answer, notes: res.data!.notes, fromNotes: res.data!.fromNotes }]);
+    setMsgs((m) => [...m, { who: "tutor", text: res.data!.answer, notes: res.data!.notes, fromNotes: res.data!.fromNotes, lesson: res.data!.lesson }]);
   };
 
   return (
@@ -80,6 +94,7 @@ function Ask({ classroomId }: { classroomId: string }) {
                 <ReadAloud text={m.text} className="px-0 py-0" />
               </div>
             )}
+            {m.who === "tutor" && m.lesson && <LessonLinkCard classroomId={classroomId} lesson={m.lesson} />}
           </div>
         ))}
         {busy && <p className="text-sm text-muted" data-testid="tutor-thinking">Thinking…</p>}
@@ -118,7 +133,7 @@ function Teach({ classroomId, topics }: { classroomId: string; topics: string[] 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rounds, setRounds] = useState<{ you: string; reply: TeachReply }[]>([]);
+  const [rounds, setRounds] = useState<{ you: string; reply: TeachReply & { lesson?: LessonLink } }[]>([]);
   const history = rounds.flatMap((r) => [`Student: ${r.you}`, `Classmate: ${r.reply.say}${r.reply.question ? ` Question: ${r.reply.question}` : ""}`]);
   const submit = async () => {
     if (busy) return; setError(null); setBusy(true);
@@ -151,6 +166,7 @@ function Teach({ classroomId, topics }: { classroomId: string; topics: string[] 
             {r.reply.missing.length > 0 && <div><p className="text-xs font-semibold uppercase tracking-wider text-warn">Still missing</p><ul className="space-y-1 text-sm">{r.reply.missing.map((m, k) => <li key={k}><b>{m.gap}</b> <span className="text-muted">{m.fix}</span></li>)}</ul></div>}
             {r.reply.question && <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm"><b>Knowa asks:</b> {r.reply.question}</p>}
             <ReadAloud text={`${r.reply.say} ${r.reply.question}`} className="px-0" />
+            {r.reply.lesson && <LessonLinkCard classroomId={classroomId} lesson={r.reply.lesson} />}
           </Card>
         ))}
       </div>
