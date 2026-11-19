@@ -4,7 +4,8 @@ import { AiTutorSetting, LeaderboardSetting, ClassDetailsForm, DeleteClass, Leav
 import { DangerZone, NameForm, PasswordForm } from "@/components/settings/account";
 import { ThemeSwitcher } from "@/components/theme";
 import { Badge, Card, CardHeader, Collapsible, PageHeader } from "@/components/ui";
-import { requireUser } from "@/lib/auth";
+import { requireUser, savedAccounts } from "@/lib/auth";
+import { SavedAccounts } from "@/components/account-switcher";
 import { db } from "@/lib/db";
 import { aiEnabled, usageSummary } from "@/lib/transcribe";
 
@@ -38,6 +39,10 @@ export default async function SettingsPage() {
       <Card as="section">
         <CardHeader title="Appearance" action={<ThemeSwitcher />} />
         <div className="h-2" />
+      </Card>
+      <Card as="section">
+        <CardHeader title="Accounts on this device" description="Stay signed in to more than one account, for example a sibling's, and switch between them." />
+        <div className="px-5 pb-5"><SavedAccounts me={{ id: user.id, name: user.name, email: user.email, role: user.role }} others={await savedAccounts()} /></div>
       </Card>
       <Card as="section">
         <CardHeader title="Account" />

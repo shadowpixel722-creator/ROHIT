@@ -1,8 +1,9 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createSession, destroySession } from "@/lib/auth";
+import { createSession, destroyAllSessions, destroySession, forgetSaved, switchToSaved } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensurePersonalSpace } from "@/lib/rooms";
 import { firstError, loginSchema, registerSchema } from "@/lib/validation";
@@ -39,7 +40,7 @@ export async function registerAction(_prev: AuthState, form: FormData): Promise<
       : { role: "STUDENT", name: d.name, email: d.email, passwordHash, guardianName: d.guardianName, consentAt: new Date() },
   });
   await ensurePersonalSpace(user);
-  await createSession(user.id);
+  await createSession(user.id, { keepCurrent: form.get("add") === "1" });
   redirect("/classes");
 }
 
@@ -53,11 +54,28 @@ export async function loginAction(_prev: AuthState, form: FormData): Promise<Aut
   const valid = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? (await dummyHash()));
   if (!user || !valid) return { error: "Incorrect email or password.", fields: { email: raw.email } };
 
-  await createSession(user.id);
+  await createSession(user.id, { keepCurrent: form.get("add") === "1" });
   redirect("/dashboard");
 }
 
 export async function logoutAction() {
-  await destroySession();
+  // With other accounts saved on this browser, the next one takes over.
+  redirect((await destroySession()) ? "/dashboard" : "/login");
+}
+
+/** Switch to another account already signed in on this browser (no password needed while its session lasts). */
+export async function switchAccountAction(userId: string) {
+  if (!(await switchToSaved(String(userId)))) redirect("/login?add=1");
+  redirect("/dashboard");
+}
+
+/** Sign out one of the other accounts saved on this browser. */
+export async function forgetAccountAction(userId: string) {
+  await forgetSaved(String(userId));
+  revalidatePath("/", "layout");
+}
+
+export async function signOutAllAction() {
+  await destroyAllSessions();
   redirect("/login");
 }

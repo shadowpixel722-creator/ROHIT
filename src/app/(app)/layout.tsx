@@ -1,7 +1,7 @@
 import { classView } from "@/components/classes/class-nav";
 import { MobileTabBar, MobileTopBar, Sidebar, type NavClass } from "@/components/nav";
 import { ToastProvider } from "@/components/toast";
-import { requireUser } from "@/lib/auth";
+import { requireUser, savedAccounts } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getGame } from "@/lib/game-server";
 import { ensurePersonalSpace } from "@/lib/rooms";
@@ -23,13 +23,13 @@ async function navClasses(userId: string): Promise<NavClass[]> {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   await ensurePersonalSpace(user);
-  const [classes, game] = await Promise.all([navClasses(user.id), getGame(user.id)]);
+  const [classes, game, accounts] = await Promise.all([navClasses(user.id), getGame(user.id), savedAccounts()]);
   // Teachers don't get the streak chip (they can still open My hero).
   const chip = user.role === "TEACHER" ? null : { streak: game.streak, doneToday: game.doneToday, coins: game.coins };
   return (
     <ToastProvider>
       <div className="flex min-h-dvh">
-        <Sidebar name={user.name} email={user.email} role={user.role} classes={classes} game={chip} />
+        <Sidebar name={user.name} email={user.email} role={user.role} classes={classes} game={chip} accounts={accounts} />
         <div className="flex min-w-0 flex-1 flex-col">
           <MobileTopBar classes={classes} game={chip} />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-28 sm:px-8 sm:pt-8 lg:pb-12">{children}</main>

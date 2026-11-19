@@ -40,11 +40,12 @@ export async function deleteAccount(confirmEmail: string) {
       db.noteAttachment.findMany({ where: { note: { authorId: userId } }, select: { filePath: true } }),
       db.classroom.findMany({ where: { teacherId: userId }, select: { id: true } }),
     ]);
-    await destroySession();
+    const switched = await destroySession(); // another account saved on this browser takes over
     await db.user.delete({ where: { id: userId } });
     await removeUploads([...ownImages, ...ownAttachments].map((i) => i.filePath));
     await Promise.all(classes.map((c) => removeClassStorage(c.id)));
+    return { switched };
   });
-  if (res.ok) redirect("/register");
+  if (res.ok) redirect(res.data?.switched ? "/dashboard" : "/register");
   return res;
 }

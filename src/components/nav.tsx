@@ -1,10 +1,10 @@
 "use client";
 
-import { Box, Check, ChevronsUpDown, Flame, FolderOpen, Home, LogOut, Settings, Sparkles, Trophy, Users } from "lucide-react";
+import { Box, Check, ChevronsUpDown, Flame, FolderOpen, Home, Settings, Sparkles, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { logoutAction } from "@/app/actions/auth";
+import { AccountMenu, type SavedAccount } from "./account-switcher";
 import { activeItem, classSections, parseClassPath, viewLabel, type ClassView } from "./classes/class-nav";
 import { Logo } from "./logo";
 import { ThemeSwitcher } from "./theme";
@@ -68,7 +68,7 @@ function useCurrentClass(classes: NavClass[]) {
   return { path, parsed, cls };
 }
 
-export function Sidebar({ name, email, role, classes, game }: { name: string; email: string; role: string; classes: NavClass[]; game: NavGame | null }) {
+export function Sidebar({ name, email, role, classes, game, accounts }: { name: string; email: string; role: string; classes: NavClass[]; game: NavGame | null; accounts: SavedAccount[] }) {
   const { path, parsed, cls } = useCurrentClass(classes);
   const links = useLastPages();
   return (
@@ -101,17 +101,7 @@ export function Sidebar({ name, email, role, classes, game }: { name: string; em
 
       <div className="space-y-3 border-t border-border px-1 pt-4">
         <ThemeSwitcher />
-        <div className="flex items-center justify-between gap-2 px-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{name} <span className="ml-1 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted">{role === "TEACHER" ? "Teacher" : "Student"}</span></p>
-            <p className="truncate text-xs text-faint">{email}</p>
-          </div>
-          <form action={logoutAction}>
-            <button type="submit" className="grid size-8 place-items-center rounded-lg text-faint hover:bg-surface-2 hover:text-text" title="Sign out" aria-label="Sign out">
-              <LogOut className="size-4" />
-            </button>
-          </form>
-        </div>
+        <AccountMenu me={{ id: "", name, email, role }} others={accounts} />
       </div>
     </aside>
   );

@@ -6,7 +6,8 @@ import { useActionState, useState } from "react";
 import { loginAction, registerAction, type AuthState } from "@/app/actions/auth";
 import { Alert, Button, Card, cn, Field, Input } from "./ui";
 
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+/** `adding`: signing in to another account while `adding.name` stays signed in on this browser. */
+export function AuthForm({ mode, adding }: { mode: "login" | "register"; adding?: { name: string } }) {
   const [state, action, pending] = useActionState<AuthState, FormData>(mode === "login" ? loginAction : registerAction, undefined);
   const [show, setShow] = useState(false);
   const [role, setRole] = useState<"STUDENT" | "TEACHER">((state?.fields?.role as "STUDENT" | "TEACHER") ?? "STUDENT");
@@ -14,10 +15,16 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   return (
     <Card className="w-full max-w-sm animate-fade-in p-6 sm:p-7">
-      <h1 className="text-xl font-semibold tracking-tight">{isRegister ? "Create your account" : "Welcome back"}</h1>
+      <h1 className="text-xl font-semibold tracking-tight">{adding ? (isRegister ? "Create another account" : "Add another account") : isRegister ? "Create your account" : "Welcome back"}</h1>
       <p className="mt-1 text-sm text-muted">{isRegister ? "Share notebooks with your class." : "Sign in to your class notebooks."}</p>
+      {adding && (
+        <p className="mt-3 rounded-xl bg-primary-soft px-3 py-2 text-sm text-primary" data-testid="adding-account">
+          You&apos;ll stay signed in as {adding.name} too, and can switch between accounts from the account menu. On a shared computer, sign out of every account when you&apos;re done.
+        </p>
+      )}
 
       <form action={action} className="mt-6 space-y-4">
+        {adding && <input type="hidden" name="add" value="1" />}
         {state?.error && <Alert>{state.error}</Alert>}
         {isRegister && (
           <div role="radiogroup" aria-label="I am a" className="grid grid-cols-2 gap-2">
@@ -70,10 +77,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
       <p className="mt-5 text-center text-sm text-muted">
         {isRegister ? "Already have an account? " : "New here? "}
-        <Link href={isRegister ? "/login" : "/register"} className="font-medium text-primary hover:underline">
+        <Link href={`${isRegister ? "/login" : "/register"}${adding ? "?add=1" : ""}`} className="font-medium text-primary hover:underline">
           {isRegister ? "Sign in" : "Create an account"}
         </Link>
       </p>
+      {adding && <p className="mt-2 text-center text-sm"><Link href="/dashboard" className="text-muted hover:text-text hover:underline">Cancel and go back to {adding.name}</Link></p>}
     </Card>
   );
 }
