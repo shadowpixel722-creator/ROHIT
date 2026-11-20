@@ -1,13 +1,14 @@
 "use client";
 
-import { Check, ChevronsUpDown, LogOut, UserPlus, X } from "lucide-react";
+import { Check, ChevronsUpDown, Lock, LogOut, UserPlus, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { forgetAccountAction, logoutAction, signOutAllAction, switchAccountAction } from "@/app/actions/auth";
+import { forgetAccountAction, logoutAction, setQuickSwitchAction, signOutAllAction, switchAccountAction } from "@/app/actions/auth";
 import { cn } from "./ui";
 
-export type SavedAccount = { id: string; name: string; email: string; role: string };
+/** `needsPassword`: switching to it asks for its password. */
+export type SavedAccount = { id: string; name: string; email: string; role: string; needsPassword?: boolean };
 
 const roleLabel = (role: string) => (role === "TEACHER" ? "Teacher" : "Student");
 const initial = (name: string) => name.trim().charAt(0).toUpperCase() || "?";
@@ -52,12 +53,13 @@ export function AccountMenu({ me, others }: { me: SavedAccount; others: SavedAcc
           </div>
           {others.map((a) => (
             <form key={a.id} action={switchAccountAction.bind(null, a.id)}>
-              <button type="submit" role="menuitem" className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-surface-2" aria-label={`Switch to ${a.name}`}>
+              <button type="submit" role="menuitem" className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-surface-2" aria-label={`Switch to ${a.name}${a.needsPassword ? " (asks for password)" : ""}`}>
                 <Avatar name={a.name} className="size-7 text-xs" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{a.name}</span>
-                  <span className="block truncate text-xs text-faint">{a.email} · {roleLabel(a.role)}</span>
+                  <span className="block truncate text-xs text-faint">{a.needsPassword ? "Asks for password" : `${a.email} · ${roleLabel(a.role)}`}</span>
                 </span>
+                {a.needsPassword && <Lock className="size-3.5 text-faint" aria-hidden />}
               </button>
             </form>
           ))}
@@ -84,9 +86,10 @@ export function AccountMenu({ me, others }: { me: SavedAccount; others: SavedAcc
 }
 
 /** Settings (and phones, which have no sidebar): the accounts saved on this browser. */
-export function SavedAccounts({ me, others }: { me: SavedAccount; others: SavedAccount[] }) {
+export function SavedAccounts({ me, others, quick }: { me: SavedAccount; others: SavedAccount[]; quick: boolean }) {
   return (
     <div className="space-y-3" data-testid="saved-accounts">
+      <QuickSwitchSetting name={me.name} on={quick} />
       <ul className="divide-y divide-border rounded-xl border border-border">
         <li className="flex items-center gap-3 px-3 py-2.5">
           <Avatar name={me.name} />
@@ -96,9 +99,9 @@ export function SavedAccounts({ me, others }: { me: SavedAccount; others: SavedA
         {others.map((a) => (
           <li key={a.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
             <Avatar name={a.name} />
-            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{a.name}</span><span className="block truncate text-xs text-muted">{a.email} · {roleLabel(a.role)}</span></span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{a.name}</span><span className="block truncate text-xs text-muted">{a.email} · {roleLabel(a.role)}{a.needsPassword && " · asks for password"}</span></span>
             <form action={switchAccountAction.bind(null, a.id)}>
-              <button type="submit" className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-2">Switch</button>
+              <button type="submit" className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-2">{a.needsPassword && <Lock className="size-3" aria-hidden />} Switch</button>
             </form>
             <form action={forgetAccountAction.bind(null, a.id)}>
               <button type="submit" className="grid size-7 place-items-center rounded-md text-faint hover:bg-surface-2 hover:text-danger" aria-label={`Sign out ${a.name} on this device`}><X className="size-4" /></button>
@@ -114,7 +117,20 @@ export function SavedAccounts({ me, others }: { me: SavedAccount; others: SavedA
           </form>
         )}
       </div>
-      <p className="text-xs text-muted">Switching doesn&apos;t ask for a password, so on a shared computer sign out of every account when you&apos;re done.</p>
+      <p className="text-xs text-muted">Accounts that switch without a password stay signed in here, so on a shared computer turn that off or sign out of every account when you&apos;re done.</p>
     </div>
+  );
+}
+
+/** The signed-in account's own choice: may others on this device switch back to it without its password? */
+function QuickSwitchSetting({ name, on }: { name: string; on: boolean }) {
+  const [value, setValue] = useState(on);
+  useEffect(() => setValue(on), [on]);
+  return (
+    <label className="flex items-start gap-2.5 text-sm">
+      <input type="checkbox" className="mt-0.5 size-4 accent-[var(--primary)]" checked={value} aria-label={`Switch back to ${name} without a password`}
+        onChange={async (e) => { const n = e.target.checked; setValue(n); await setQuickSwitchAction(n); }} />
+      <span><span className="font-medium">Switch back to {name} without a password</span> <span className="text-muted">(when you change to another account on this device. Off: {name} is signed out and switching back asks for the password)</span></span>
+    </label>
   );
 }

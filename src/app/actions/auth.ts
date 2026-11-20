@@ -3,7 +3,7 @@
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createSession, destroyAllSessions, destroySession, forgetSaved, switchToSaved } from "@/lib/auth";
+import { createSession, destroyAllSessions, destroySession, forgetSaved, requireUserId, setCurrentQuickSwitch, switchToSaved } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensurePersonalSpace } from "@/lib/rooms";
 import { firstError, loginSchema, registerSchema } from "@/lib/validation";
@@ -40,7 +40,7 @@ export async function registerAction(_prev: AuthState, form: FormData): Promise<
       : { role: "STUDENT", name: d.name, email: d.email, passwordHash, guardianName: d.guardianName, consentAt: new Date() },
   });
   await ensurePersonalSpace(user);
-  await createSession(user.id, { keepCurrent: form.get("add") === "1" });
+  await createSession(user.id, { keepCurrent: form.get("add") === "1", quickSwitch: form.get("quickSwitch") === "on" });
   redirect("/classes");
 }
 
@@ -54,7 +54,7 @@ export async function loginAction(_prev: AuthState, form: FormData): Promise<Aut
   const valid = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? (await dummyHash()));
   if (!user || !valid) return { error: "Incorrect email or password.", fields: { email: raw.email } };
 
-  await createSession(user.id, { keepCurrent: form.get("add") === "1" });
+  await createSession(user.id, { keepCurrent: form.get("add") === "1", quickSwitch: form.get("quickSwitch") === "on" });
   redirect("/dashboard");
 }
 
@@ -63,10 +63,21 @@ export async function logoutAction() {
   redirect((await destroySession()) ? "/dashboard" : "/login");
 }
 
-/** Switch to another account already signed in on this browser (no password needed while its session lasts). */
+/**
+ * Switch to another account on this browser: straight away if it chose to stay signed in, otherwise
+ * to the sign-in page with its email filled in.
+ */
 export async function switchAccountAction(userId: string) {
-  if (!(await switchToSaved(String(userId)))) redirect("/login?add=1");
+  const r = await switchToSaved(String(userId));
+  if (!r.ok) redirect(r.email ? `/login?add=1&email=${encodeURIComponent(r.email)}` : "/login?add=1");
   redirect("/dashboard");
+}
+
+/** Whether the signed-in account can be switched back to without its password. */
+export async function setQuickSwitchAction(on: boolean) {
+  await requireUserId();
+  await setCurrentQuickSwitch(Boolean(on));
+  revalidatePath("/settings");
 }
 
 /** Sign out one of the other accounts saved on this browser. */

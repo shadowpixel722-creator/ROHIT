@@ -43,6 +43,9 @@ model Session {
   id        String   @id @default(cuid())
   tokenHash String   @unique
   userId    String
+  /// When another account takes over this browser, keep this session so its owner can switch back without a password.
+  /// False: it is signed out and only remembered by name, so switching back asks for the password.
+  quickSwitch Boolean @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

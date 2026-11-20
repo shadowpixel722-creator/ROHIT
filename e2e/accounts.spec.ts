@@ -31,51 +31,67 @@ async function signIn(page: Page, email: string, add = false) {
 
 const menu = (page: Page) => page.getByTestId("account-menu");
 
-test("save several accounts on one browser and switch between them", async ({ page }) => {
+test("save several accounts on one browser; each chooses whether switching back asks for its password", async ({ page }) => {
   const asha = `asha-${uid()}@example.com`;
   const mehta = `mehta-${uid()}@example.com`;
   await register(page, "Student", "Asha", asha);
   await expect(menu(page)).toContainText("Asha");
 
-  // Add a second account: the first stays signed in
+  // Asha chooses to be switched back to without a password
+  await page.goto("/settings");
+  await page.getByLabel("Switch back to Asha without a password").check();
+  await page.waitForLoadState("networkidle");
+
+  // Add a second account, which leaves "no password" off
   await menu(page).click();
   await page.getByRole("menuitem", { name: "Add another account" }).click();
-  await expect(page.getByTestId("adding-account")).toContainText("You'll stay signed in as Asha");
+  await expect(page.getByTestId("adding-account")).toContainText("Asha stays on this device: switch back from the account menu without a password");
   await page.getByRole("link", { name: "Create an account" }).click();
   await expect(page).toHaveURL(/\/register\?add=1$/);
   await register(page, "Teacher", "Mr Mehta", mehta, true);
   await expect(menu(page)).toContainText("Mr Mehta");
 
-  // Switch back and forth without a password
+  // Back to Asha: no password
   await menu(page).click();
   await page.getByRole("menuitem", { name: "Switch to Asha" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(menu(page)).toContainText("Asha");
+
+  // Back to Mr Mehta: he chose to be asked for his password
   await menu(page).click();
-  await page.getByRole("menuitem", { name: "Switch to Mr Mehta" }).click();
+  await page.getByRole("menuitem", { name: "Switch to Mr Mehta (asks for password)" }).click();
+  await expect(page).toHaveURL(/\/login\?add=1&email=/);
+  await expect(page.getByLabel("Email")).toHaveValue(mehta);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
   await expect(menu(page)).toContainText("Mr Mehta");
 
-  // Settings lists them too (phones have no sidebar)
+  // Settings lists the others too (phones have no sidebar)
   await page.goto("/settings");
   const saved = page.getByTestId("saved-accounts");
-  await expect(saved).toContainText("Mr Mehta");
   await expect(saved).toContainText("Asha");
   await saved.getByRole("button", { name: "Switch" }).click();
   await expect(menu(page)).toContainText("Asha");
 
-  // Signing out of one account hands over to the other
+  // Signing out of Asha: Mr Mehta isn't signed in on this device, so nobody is, and the list is cleared
   await menu(page).click();
   await page.getByRole("menuitem", { name: "Sign out of Asha" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(menu(page)).toContainText("Mr Mehta");
+  await expect(page).toHaveURL(/\/login$/);
+  await signIn(page, asha);
   await menu(page).click();
   await expect(page.getByRole("menuitem", { name: /Switch to/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // Add Asha again, then sign out of everything
-  await signIn(page, asha, true);
+  // Add Mr Mehta again, this time without a password to switch back; Asha (a plain sign-in) now asks for hers
+  await page.goto("/login?add=1");
+  await page.getByLabel("Email").fill(mehta);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByLabel(/Switch back to this account without entering its password/).check();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
   await menu(page).click();
-  await expect(page.getByRole("menuitem", { name: "Switch to Mr Mehta" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Switch to Asha (asks for password)" })).toBeVisible();
   await page.getByRole("menuitem", { name: "Sign out of all accounts" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/dashboard");

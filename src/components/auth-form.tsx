@@ -6,8 +6,11 @@ import { useActionState, useState } from "react";
 import { loginAction, registerAction, type AuthState } from "@/app/actions/auth";
 import { Alert, Button, Card, cn, Field, Input } from "./ui";
 
-/** `adding`: signing in to another account while `adding.name` stays signed in on this browser. */
-export function AuthForm({ mode, adding }: { mode: "login" | "register"; adding?: { name: string } }) {
+/**
+ * `adding`: signing in to another account while `adding.name` stays on this browser's account list
+ * (`adding.quick`: it can be switched back to without its password). `email`: filled in, e.g. when switching back.
+ */
+export function AuthForm({ mode, adding, email }: { mode: "login" | "register"; adding?: { name: string; quick: boolean }; email?: string }) {
   const [state, action, pending] = useActionState<AuthState, FormData>(mode === "login" ? loginAction : registerAction, undefined);
   const [show, setShow] = useState(false);
   const [role, setRole] = useState<"STUDENT" | "TEACHER">((state?.fields?.role as "STUDENT" | "TEACHER") ?? "STUDENT");
@@ -19,7 +22,7 @@ export function AuthForm({ mode, adding }: { mode: "login" | "register"; adding?
       <p className="mt-1 text-sm text-muted">{isRegister ? "Share notebooks with your class." : "Sign in to your class notebooks."}</p>
       {adding && (
         <p className="mt-3 rounded-xl bg-primary-soft px-3 py-2 text-sm text-primary" data-testid="adding-account">
-          You&apos;ll stay signed in as {adding.name} too, and can switch between accounts from the account menu. On a shared computer, sign out of every account when you&apos;re done.
+          {adding.name} stays on this device: switch back from the account menu{adding.quick ? " without a password" : " by entering their password"}. Change that in Settings.
         </p>
       )}
 
@@ -44,7 +47,7 @@ export function AuthForm({ mode, adding }: { mode: "login" | "register"; adding?
           </Field>
         )}
         <Field label="Email" htmlFor="email">
-          <Input id="email" name="email" type="email" autoComplete="email" required defaultValue={state?.fields?.email} />
+          <Input id="email" name="email" type="email" autoComplete="email" required defaultValue={state?.fields?.email ?? email} />
         </Field>
         <Field label="Password" htmlFor="password" hint={isRegister ? "At least 8 characters." : undefined}>
           <div className="relative">
@@ -71,6 +74,12 @@ export function AuthForm({ mode, adding }: { mode: "login" | "register"; adding?
               </span>
             </label>
           </div>
+        )}
+        {adding && (
+          <label className="flex items-start gap-2.5 text-sm">
+            <input type="checkbox" name="quickSwitch" className="mt-0.5 size-4 accent-[var(--primary)]" />
+            <span className="text-muted">Switch back to this account without entering its password. Leave this off on a shared computer.</span>
+          </label>
         )}
         <Button type="submit" className="w-full" loading={pending}>{isRegister ? "Create account" : "Sign in"}</Button>
       </form>
