@@ -30,3 +30,4 @@ src/app/actions/         server actions: auth, classes, syllabus, account
 src/lib/access.ts        server-side class access checks (teacher / member)
 src/lib/join-code.ts     join-code generation and normalisation
 ```
+# Knowa
