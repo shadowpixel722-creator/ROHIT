@@ -2,7 +2,47 @@
 
 import { Mic, Square, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { englishVoices, pickVoice, PITCH, saveVoicePrefs, tuneUtterance, VOICE_TEST, voicePrefs, type VoicePitch, type VoicePrefs } from "@/lib/voice";
 import { cn } from "./ui";
+
+/** Settings: which voice reads lessons and notes aloud, and how high. Kept in this browser. */
+export function VoiceSettings() {
+  const [prefs, setPrefs] = useState<VoicePrefs | null>(null);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    setPrefs(voicePrefs());
+    const load = () => setVoices(englishVoices());
+    load();
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, []);
+  if (!prefs) return <p className="text-sm text-muted">This browser can&apos;t read aloud.</p>;
+  const test = (p: VoicePrefs) => {
+    try { const ss = window.speechSynthesis; ss.cancel(); const u = new SpeechSynthesisUtterance(VOICE_TEST); tuneUtterance(u, 1, p); ss.speak(u); } catch { /* ignore */ }
+  };
+  const update = (p: VoicePrefs) => { setPrefs(p); saveVoicePrefs(p); test(p); };
+  const auto = pickVoice("");
+  const field = "rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm";
+  return (
+    <div className="flex flex-wrap items-end gap-3" data-testid="voice-settings">
+      <label className="grid gap-1 text-xs font-medium text-muted">Voice
+        <select className={field} value={prefs.name} onChange={(e) => update({ ...prefs, name: e.target.value })}>
+          <option value="">Automatic{auto ? ` (${auto.name})` : ""}</option>
+          {voices.map((v) => <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>)}
+        </select>
+      </label>
+      <label className="grid gap-1 text-xs font-medium text-muted">Pitch
+        <select className={field} value={prefs.pitch} onChange={(e) => update({ ...prefs, pitch: e.target.value as VoicePitch })}>
+          {(Object.keys(PITCH) as VoicePitch[]).map((k) => <option key={k} value={k}>{PITCH[k].label}</option>)}
+        </select>
+      </label>
+      <button type="button" onClick={() => test(prefs)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-2">
+        <Volume2 className="size-4" /> Test voice
+      </button>
+    </div>
+  );
+}
 
 /** Reads text aloud with the browser's own voice (on the device; nothing is sent). Tap again to stop. */
 export function ReadAloud({ text, label = "Read aloud", className }: { text: string; label?: string; className?: string }) {
@@ -15,10 +55,9 @@ export function ReadAloud({ text, label = "Read aloud", className }: { text: str
     if (on) { ss.cancel(); setOn(false); return; }
     ss.cancel();
     const parts = text.replace(/[#*_`>|]/g, " ").replace(/\s+/g, " ").match(/[^.!?]+[.!?]*/g) ?? [text];
-    const voices = ss.getVoices().filter((v) => /^en/i.test(v.lang));
-    const voice = voices.find((v) => /en[-_]IN/i.test(v.lang)) ?? voices[0];
+    const prefs = voicePrefs();
     parts.forEach((p, i) => {
-      const u = new SpeechSynthesisUtterance(p.trim()); if (voice) u.voice = voice;
+      const u = new SpeechSynthesisUtterance(p.trim()); tuneUtterance(u, 1, prefs);
       if (i === parts.length - 1) { u.onend = () => setOn(false); u.onerror = () => setOn(false); }
       ss.speak(u);
     });

@@ -6,6 +6,7 @@ import { ThemeSwitcher } from "@/components/theme";
 import { Badge, Card, CardHeader, Collapsible, PageHeader } from "@/components/ui";
 import { currentQuickSwitch, requireUser, savedAccounts } from "@/lib/auth";
 import { SavedAccounts } from "@/components/account-switcher";
+import { VoiceSettings } from "@/components/speech";
 import { db } from "@/lib/db";
 import { aiEnabled, usageSummary } from "@/lib/transcribe";
 
@@ -39,6 +40,10 @@ export default async function SettingsPage() {
       <Card as="section">
         <CardHeader title="Appearance" action={<ThemeSwitcher />} />
         <div className="h-2" />
+      </Card>
+      <Card as="section">
+        <CardHeader title="Voice" description="The voice that reads 3D lessons, notes and tutor answers aloud. It runs on this device and is saved in this browser." />
+        <div className="px-5 pb-5"><VoiceSettings /></div>
       </Card>
       <Card as="section">
         <CardHeader title="Accounts on this device" description="Stay signed in to more than one account, for example a sibling's, and switch between them." />

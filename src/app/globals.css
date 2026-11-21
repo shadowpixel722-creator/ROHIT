@@ -2,54 +2,58 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Knowa colours: black and blue (ink #01030a, blue #4c9dff, sky #8fc8ff, mint text #e6f0ff, amber, coral, teal).
+   Dark is the Knowa look and the default; light is the same blue on a pale blue-white page. */
 :root {
-  /* Chart series colour (validated: lightness, chroma and 3:1 contrast on the card surface, light and dark) */
-  --viz-1: #2a78d6;
-  --bg: #f6f7f9;
+  /* Chart series colour (3:1 contrast on the card surface, light and dark) */
+  --viz-1: #1f6fe0;
+  --bg: #f3f7fd;
   --surface: #ffffff;
-  --surface-2: #f1f3f6;
-  --border: #e4e7ec;
-  --border-strong: #d0d5dd;
-  --text: #101828;
-  --muted: #5d6679;
-  --faint: #8a93a5;
-  --primary: #3a5ccc;
-  --primary-hover: #2f4db0;
-  --primary-soft: #eaefff;
+  --surface-2: #eaf1fb;
+  --border: #d9e3f2;
+  --border-strong: #bfcfe6;
+  --text: #07111f;
+  --muted: #4a5d7c;
+  --faint: #7a8aa5;
+  --primary: #1f6fe0;
+  --primary-hover: #185bbb;
+  --primary-soft: #e6f0ff;
   --primary-fg: #ffffff;
-  --warn: #a8590a;
-  --warn-soft: #fdf2e3;
-  --danger: #c0364a;
-  --danger-soft: #fdecee;
-  --success: #1d7f4f;
-  --success-soft: #e6f5ec;
-  --ring: rgba(58, 92, 204, 0.35);
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 16px rgba(16, 24, 40, 0.04);
+  --warn: #a85a06;
+  --warn-soft: #fff1df;
+  --danger: #cf3b2c;
+  --danger-soft: #ffece9;
+  --success: #0b7f76;
+  --success-soft: #e0f7f4;
+  --ring: rgba(31, 111, 224, 0.35);
+  --shadow: 0 1px 2px rgba(7, 17, 31, 0.05), 0 6px 20px rgba(31, 111, 224, 0.06);
+  --glow: none;
   color-scheme: light;
 }
 
 .dark {
-  --viz-1: #3987e5;
-  --bg: #0c0f15;
-  --surface: #141821;
-  --surface-2: #1b2029;
-  --border: #262c37;
-  --border-strong: #343b48;
-  --text: #e8ebf1;
-  --muted: #9aa3b2;
-  --faint: #6b7383;
-  --primary: #7d9bff;
-  --primary-hover: #94adff;
-  --primary-soft: #1b2340;
-  --primary-fg: #0c1020;
-  --warn: #f0ad4e;
-  --warn-soft: #2c2312;
-  --danger: #f07a8a;
-  --danger-soft: #31181d;
-  --success: #5fcf93;
-  --success-soft: #14281d;
-  --ring: rgba(125, 155, 255, 0.4);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+  --viz-1: #4c9dff;
+  --bg: #01030a;
+  --surface: #060b17;
+  --surface-2: #0b1424;
+  --border: #142036;
+  --border-strong: #22324f;
+  --text: #e6f0ff;
+  --muted: #8da3c2;
+  --faint: #60769a;
+  --primary: #4c9dff;
+  --primary-hover: #8fc8ff;
+  --primary-soft: #0c1d38;
+  --primary-fg: #02060f;
+  --warn: #ffb454;
+  --warn-soft: #2a1d08;
+  --danger: #ff6b5e;
+  --danger-soft: #2e1210;
+  --success: #2fd8c8;
+  --success-soft: #072623;
+  --ring: rgba(143, 200, 255, 0.45);
+  --shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+  --glow: radial-gradient(1100px 650px at 75% -10%, rgba(76, 157, 255, 0.11), transparent 60%), radial-gradient(900px 600px at -10% 110%, rgba(167, 139, 250, 0.06), transparent 60%);
   color-scheme: dark;
 }
 
@@ -72,8 +76,8 @@
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-app-mono), ui-monospace, monospace;
   --shadow-card: var(--shadow);
 }
 
@@ -82,7 +86,8 @@ html {
 }
 
 body {
-  background: var(--bg);
+  background: var(--glow), var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -166,7 +171,7 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 .ks-readout b { color: #ffb454; font-weight: 600; }
 .ks-readout .ok { color: #8fc8ff; }
 .ks-chip { background: rgba(4, 8, 18, .8); border: 1px solid rgba(130, 170, 255, .2); border-radius: 999px; padding: 3px 11px; font: 600 12px var(--font-sans); color: #8da3c2; text-transform: capitalize; }
-.ks-chip.on { border-color: #7d9bff; color: #b9c8ff; }
+.ks-chip.on { border-color: #4c9dff; color: #8fc8ff; }
 .ks-tag { position: absolute; left: 0; top: 0; will-change: transform; animation: ks-in .35s ease-out; }
 .ks-tag .dot { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: #ffb454; box-shadow: 0 0 0 4px rgba(255, 179, 71, .25), 0 0 14px #ffb454; }
 .ks-tag .ln { position: absolute; left: 0; top: 0; width: 34px; height: 1px; background: #ffb454; transform-origin: 0 0; transform: rotate(-48deg); }

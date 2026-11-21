@@ -6,9 +6,11 @@ import { cn } from "./ui";
 
 export type ThemePref = "light" | "dark" | "system";
 const KEY = "ep-theme";
+/** Knowa's black-and-blue look is the default; people can still pick Light or System. */
+const DEFAULT_THEME: ThemePref = "dark";
 
 /** Runs before paint (inlined in <head>) to avoid a flash of the wrong theme. */
-export const themeInitScript = `(function(){try{var p=localStorage.getItem('${KEY}')||'system';var d=p==='dark'||(p==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+export const themeInitScript = `(function(){try{var p=localStorage.getItem('${KEY}')||'dark';var d=p==='dark'||(p==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){document.documentElement.classList.add('dark')}})();`;
 
 function apply(pref: ThemePref) {
   const dark = pref === "dark" || (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -16,18 +18,18 @@ function apply(pref: ThemePref) {
 }
 
 export function useTheme() {
-  const [pref, setPref] = useState<ThemePref>("system");
+  const [pref, setPref] = useState<ThemePref>(DEFAULT_THEME);
   useEffect(() => {
-    let stored: ThemePref = "system";
+    let stored: ThemePref = DEFAULT_THEME;
     try {
-      stored = (localStorage.getItem(KEY) as ThemePref) || "system";
+      stored = (localStorage.getItem(KEY) as ThemePref) || DEFAULT_THEME;
     } catch {}
     setPref(stored);
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
-      let current: ThemePref = "system";
+      let current: ThemePref = DEFAULT_THEME;
       try {
-        current = (localStorage.getItem(KEY) as ThemePref) || "system";
+        current = (localStorage.getItem(KEY) as ThemePref) || DEFAULT_THEME;
       } catch {}
       if (current === "system") apply("system");
     };

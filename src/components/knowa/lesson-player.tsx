@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { lessonFinished } from "@/app/actions/game";
 import { useEffect, useRef, useState } from "react";
 import type { Lesson, LessonNote, LessonQuiz, LessonStep, LessonVisual } from "@/lib/knowa/lessons";
+import { tuneUtterance } from "@/lib/voice";
 import { Button, Card, cn } from "../ui";
 import { HelpMeUnderstand } from "../understand";
 
@@ -107,18 +108,12 @@ export function LessonPlayer({ lesson, backHref, backLabel = "Back", onFinish, c
   const speechOK = typeof window !== "undefined" && "speechSynthesis" in window;
   const voiceBad = useRef(false);
   function stopVoice() { try { if (speechOK) window.speechSynthesis.cancel(); } catch { /* ignore */ } }
-  const pickVoice = () => {
-    try {
-      const vs = window.speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang));
-      return vs.find((v) => /en[-_]IN/i.test(v.lang)) ?? vs.find((v) => /en[-_](GB|US)/i.test(v.lang)) ?? vs[0] ?? null;
-    } catch { return null; }
-  };
   const sayOne = (text: string, tok: number) => new Promise<boolean>((res) => {
     const ss = window.speechSynthesis; let started = false, done = false;
     const fin = () => { if (done) return; done = true; clearInterval(poll); clearTimeout(cap); res(started); };
     try {
-      const u = new SpeechSynthesisUtterance(text), v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; }
-      u.rate = 1.02 * run.current.speed; u.onstart = () => { started = true; }; u.onend = fin; u.onerror = fin;
+      const u = new SpeechSynthesisUtterance(text); tuneUtterance(u, run.current.speed);
+      u.onstart = () => { started = true; }; u.onend = fin; u.onerror = fin;
       ss.cancel(); ss.resume(); ss.speak(u);
     } catch { fin(); }
     const t0 = performance.now();
